@@ -1,8 +1,8 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 
 import { ThemeProvider } from "@/components/theme-provider";
-import { Toaster } from "@/components/ui/sonner";
+import { ResponsiveToaster } from "@/components/responsive-toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
 import "./globals.css";
@@ -23,6 +23,16 @@ export const metadata: Metadata = {
     "Upload, enhance, resize, and export images optimized for social media platforms.",
 };
 
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#f8fafc" },
+    { media: "(prefers-color-scheme: dark)", color: "#1a1a2e" },
+  ],
+};
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -31,7 +41,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} min-h-screen antialiased`}
+        className={`${geistSans.variable} ${geistMono.variable} min-h-screen overflow-x-hidden antialiased`}
       >
         <ThemeProvider
           attribute="class"
@@ -39,9 +49,10 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
+          <div className="app-backdrop" aria-hidden />
           <TooltipProvider>
             {children}
-            <Toaster richColors position="top-right" />
+            <ResponsiveToaster />
           </TooltipProvider>
         </ThemeProvider>
       </body>

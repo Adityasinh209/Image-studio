@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import {
   DEFAULT_OPS,
   isSupportedImage,
+  mergeImageOps,
   type ExportFormat,
   type ImageOps,
 } from "@/lib/imageOps";
@@ -20,8 +21,10 @@ export async function POST(request: Request) {
   try {
     const formData = await request.formData();
     const image = formData.get("image");
+    const cutout = formData.get("cutout");
     const opsRaw = formData.get("ops");
     const formatRaw = formData.get("format");
+    const maxSizeRaw = formData.get("maxSizeKb");
 
     if (!(image instanceof File)) {
       return NextResponse.json({ error: "Image file is required." }, { status: 400 });
@@ -42,7 +45,8 @@ export async function POST(request: Request) {
     let ops: ImageOps = DEFAULT_OPS;
     if (typeof opsRaw === "string") {
       try {
-        ops = { ...DEFAULT_OPS, ...JSON.parse(opsRaw) };
+        const parsed = JSON.parse(opsRaw) as Partial<ImageOps>;
+        ops = mergeImageOps(parsed);
       } catch {
         return NextResponse.json({ error: "Invalid operations payload." }, { status: 400 });
       }
@@ -50,7 +54,28 @@ export async function POST(request: Request) {
 
     const arrayBuffer = await image.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
-    const output = await processImageWithSharp(buffer, ops, format);
+
+    let cutoutBuffer: Buffer | null = null;
+    if (cutout instanceof File && ops.portrait.enabled) {
+      const cutoutAb = await cutout.arrayBuffer();
+      cutoutBuffer = Buffer.from(cutoutAb);
+    }
+
+    let maxSizeKb: number | null = null;
+    if (typeof maxSizeRaw === "string" && maxSizeRaw.length > 0) {
+      const parsed = Number.parseInt(maxSizeRaw, 10);
+      if (Number.isFinite(parsed) && parsed > 0) {
+        maxSizeKb = parsed;
+      }
+    }
+
+    const output = await processImageWithSharp(
+      buffer,
+      ops,
+      format,
+      cutoutBuffer,
+      maxSizeKb,
+    );
 
     return new NextResponse(new Uint8Array(output), {
       status: 200,

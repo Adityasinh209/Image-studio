@@ -1,0 +1,39 @@
+---
+description: Web development standards for Image Studio (Next.js, React, TypeScript, Sharp)
+alwaysApply: true
+---
+
+# Image Studio Coding Standards
+
+You are an expert in JavaScript, TypeScript, CSS, React, Tailwind, Node.js, and Next.js. Choose the best tools, avoid unnecessary duplication and complexity.
+
+## Workflow
+
+- Break work into discrete changes and suggest a small test after each stage.
+- Before writing code, review existing code inside `<CODE_REVIEW>` tags.
+- Plan changes inside `<PLANNING>` tags before implementing.
+- For security-sensitive work (input handling, file uploads, API routes), add a `<SECURITY_REVIEW>` section.
+- Ask for clarification only when requirements are genuinely unclear.
+
+## Project Conventions
+
+- **Stack**: Next.js 16 App Router, React 19, TypeScript, Tailwind CSS 4, Sharp for server export.
+- **Image processing**: Client-side Canvas for live preview; Sharp (`src/lib/sharpPipeline.ts`) for final export. Keep both paths in sync.
+- **State**: Centralize ops in `ImageOps` (`src/lib/imageOps.ts`). Use `mergeImageOps` for deep merges — never shallow-merge nested settings.
+- **Batch editing**: Up to 15 images; shared controls; revoke blob URLs via `revokeEditorImages` to avoid memory leaks.
+- **Background removal**: Client-side via `@huggingface/transformers`; store cutout on `EditorImage`.
+- **Portrait mode**: Composite blurred background + sharp subject using cutout mask — do not remove the background entirely.
+
+## Code Quality
+
+- Match existing naming, types, and component patterns before adding new abstractions.
+- Guard canvas operations against zero dimensions (`IndexSizeError`).
+- Handle upload/load failures with user-facing toast messages.
+- JPG export on transparent images must flatten to a solid background.
+- Consider performance (preview capped at `MAX_PREVIEW_EDGE`), error handling, and edge cases.
+
+## Operational
+
+- Highlight hosting, monitoring, and maintenance implications where relevant.
+- Use semantic HTTP status codes in API routes.
+- Run `npm run lint` and `npm run build` after substantive changes.

@@ -6,7 +6,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
-import { type ResizeSettings } from "@/lib/imageOps";
+import {
+  computeOutputDimensions,
+  type ResizeSettings,
+} from "@/lib/imageOps";
 
 type ResizeControlsProps = {
   resize: ResizeSettings;
@@ -27,32 +30,48 @@ export function ResizeControls({
     onChange({ ...resize, ...partial });
   };
 
+  const output = computeOutputDimensions(originalWidth, originalHeight, resize);
+
   const handleWidthChange = (value: string) => {
-    const width = Number(value) || 0;
+    const width = Math.max(0, Number.parseInt(value, 10) || 0);
     if (resize.maintainAspectRatio && originalWidth > 0 && width > 0) {
       const aspect = originalHeight / originalWidth;
-      update({ width, height: Math.round(width * aspect) });
+      update({
+        width,
+        height: Math.round(width * aspect),
+        scalePercent: 100,
+        mode: "scale",
+      });
       return;
     }
-    update({ width });
+    update({ width, scalePercent: 100, mode: "scale" });
   };
 
   const handleHeightChange = (value: string) => {
-    const height = Number(value) || 0;
+    const height = Math.max(0, Number.parseInt(value, 10) || 0);
     if (resize.maintainAspectRatio && originalHeight > 0 && height > 0) {
       const aspect = originalWidth / originalHeight;
-      update({ height, width: Math.round(height * aspect) });
+      update({
+        height,
+        width: Math.round(height * aspect),
+        scalePercent: 100,
+        mode: "scale",
+      });
       return;
     }
-    update({ height });
+    update({ height, scalePercent: 100, mode: "scale" });
+  };
+
+  const handleScaleChange = (scalePercent: number) => {
+    update({ scalePercent, width: 0, height: 0, mode: "scale" });
   };
 
   return (
     <div className="space-y-5">
-      <div className="space-y-3">
+      <div className="space-y-3 rounded-xl border border-border/50 bg-muted/20 p-4">
         <div className="flex items-center justify-between">
           <Label>Scale</Label>
-          <span className="text-muted-foreground text-sm">
+          <span className="bg-muted rounded-md px-2 py-0.5 font-mono text-xs tabular-nums">
             {resize.scalePercent}%
           </span>
         </div>
@@ -61,19 +80,19 @@ export function ResizeControls({
           max={200}
           step={1}
           value={[resize.scalePercent]}
-          onValueChange={([scalePercent]) => update({ scalePercent })}
+          onValueChange={([scalePercent]) => handleScaleChange(scalePercent)}
           disabled={disabled}
         />
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-3 rounded-xl border border-border/50 bg-muted/20 p-4">
         <div className="space-y-2">
           <Label htmlFor="width">Width (px)</Label>
           <Input
             id="width"
             type="number"
             min={0}
-            value={resize.width || ""}
+            value={resize.width > 0 ? resize.width : ""}
             placeholder={originalWidth ? String(originalWidth) : "Auto"}
             onChange={(event) => handleWidthChange(event.target.value)}
             disabled={disabled}
@@ -85,7 +104,7 @@ export function ResizeControls({
             id="height"
             type="number"
             min={0}
-            value={resize.height || ""}
+            value={resize.height > 0 ? resize.height : ""}
             placeholder={originalHeight ? String(originalHeight) : "Auto"}
             onChange={(event) => handleHeightChange(event.target.value)}
             disabled={disabled}
@@ -93,10 +112,16 @@ export function ResizeControls({
         </div>
       </div>
 
+      {output.width > 0 && output.height > 0 && (
+        <p className="text-muted-foreground text-sm">
+          Output: {output.width} × {output.height}px
+        </p>
+      )}
+
       <Button
         type="button"
         variant="outline"
-        className="w-full"
+        className="h-11 w-full rounded-xl"
         onClick={() =>
           update({ maintainAspectRatio: !resize.maintainAspectRatio })
         }

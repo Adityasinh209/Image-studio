@@ -252,8 +252,13 @@ export function CanvasPreview({
   useEffect(() => {
     if (!originalUrl || !originalImageRef.current?.complete) return;
 
-    const delay =
-      adjustments.sharpness > 0 || adjustments.noiseReduction > 0 ? 120 : 0;
+    // Use a longer debounce when expensive pixel ops are active so rapid
+    // slider drags don't queue up many heavy renders.
+    let delay = 0;
+    if (portrait.enabled) delay = 80; // compositing two canvases
+    else if (adjustments.sharpness > 0 || adjustments.noiseReduction > 0) delay = 80;
+    else if (effects.look !== "none" || effects.retouch > 0 || effects.vignette > 0) delay = 40;
+
     const timeout = window.setTimeout(renderPreviewRef.current, delay);
     return () => window.clearTimeout(timeout);
   }, [

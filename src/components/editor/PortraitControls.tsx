@@ -1,11 +1,12 @@
 "use client";
 
-import { Camera, Loader2 } from "lucide-react";
+import { Camera, Loader2, Zap } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { cn } from "@/lib/utils";
+import type { ModelStatus } from "@/lib/backgroundRemoval";
 import {
   ratioToCoverDimensions,
   type PortraitOrientation,
@@ -27,12 +28,22 @@ type PortraitControlsProps = {
   originalHeight: number;
   isProcessing: boolean;
   progress: string;
+  modelStatus?: ModelStatus;
+  /** Live preview while dragging blur slider */
   onPortraitChange: (portrait: PortraitSettings) => void;
+  /** Committed change (push to undo stack) */
+  onPortraitCommit?: (portrait: PortraitSettings) => void;
   onResizeChange: (resize: ResizeSettings) => void;
   onTurnOn: () => void;
   onTurnOff: () => void;
   disabled?: boolean;
 };
+
+/** Parse "Loading model… 42%" → 42, otherwise null */
+function parsePercent(msg: string): number | null {
+  const m = msg.match(/(\d+)%/);
+  return m ? parseInt(m[1], 10) : null;
+}
 
 export function PortraitControls({
   portrait,
@@ -41,7 +52,9 @@ export function PortraitControls({
   originalHeight,
   isProcessing,
   progress,
+  modelStatus = "idle",
   onPortraitChange,
+  onPortraitCommit,
   onResizeChange,
   onTurnOn,
   onTurnOff,
@@ -75,6 +88,9 @@ export function PortraitControls({
     });
   };
 
+  const percent = isProcessing ? parsePercent(progress) : null;
+  const modelReady = modelStatus === "ready";
+
   return (
     <div className="space-y-5">
       {!portrait.enabled ? (
@@ -89,6 +105,46 @@ export function PortraitControls({
               mode on a phone camera.
             </p>
           </div>
+
+          {modelReady && !isProcessing && (
+            <div className="flex items-center justify-center gap-1.5 text-xs text-green-600 dark:text-green-400">
+              <Zap className="size-3" />
+              <span>AI model cached — activation will be fast.</span>
+            </div>
+          )}
+
+          {modelStatus === "loading" && !isProcessing && (
+            <div className="space-y-1.5 text-left">
+              <p className="text-muted-foreground text-xs text-center">
+                Downloading AI model in the background…
+              </p>
+              <div className="h-1 w-full overflow-hidden rounded-full bg-muted">
+                <div className="bg-primary/50 h-full w-1/3 rounded-full animate-[slide-x_1.5s_ease-in-out_infinite]" />
+              </div>
+            </div>
+          )}
+
+          {/* Progress bar during activation */}
+          {isProcessing && (
+            <div className="space-y-1.5 text-left">
+              <div className="flex items-center justify-between gap-2 text-xs">
+                <span className="text-muted-foreground truncate">{progress}</span>
+                {percent !== null && (
+                  <span className="text-primary shrink-0 tabular-nums">{percent}%</span>
+                )}
+              </div>
+              <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+                <div
+                  className="bg-primary h-full rounded-full transition-all duration-300"
+                  style={{
+                    width: percent !== null ? `${percent}%` : "100%",
+                    animation: percent === null ? "pulse 1.5s ease-in-out infinite" : undefined,
+                  }}
+                />
+              </div>
+            </div>
+          )}
+
           <Button
             type="button"
             className="h-12 w-full text-base hover-lift"
@@ -98,7 +154,7 @@ export function PortraitControls({
             {isProcessing ? (
               <>
                 <Loader2 className="size-4 animate-spin" />
-                {progress || "Turning on Portrait Mode..."}
+                {progress || "Turning on Portrait Mode…"}
               </>
             ) : (
               <>
@@ -141,6 +197,9 @@ export function PortraitControls({
               value={[portrait.blurStrength]}
               onValueChange={([v]) =>
                 onPortraitChange({ ...portrait, blurStrength: v })
+              }
+              onValueCommit={([v]) =>
+                onPortraitCommit?.({ ...portrait, blurStrength: v })
               }
               disabled={disabled}
             />

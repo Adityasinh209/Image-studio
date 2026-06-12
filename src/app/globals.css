@@ -542,6 +542,13 @@
     background: oklch(0.45 0.02 280 / 0.7);
   }
 
+  /* Indeterminate progress bar slide animation */
+  @keyframes slide-x {
+    0%   { transform: translateX(-100%); }
+    50%  { transform: translateX(150%); }
+    100% { transform: translateX(350%); }
+  }
+
   @media (prefers-reduced-motion: reduce) {
     .ctrl-panel-grid {
       transition: none !important;

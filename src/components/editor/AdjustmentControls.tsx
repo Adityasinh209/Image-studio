@@ -24,8 +24,12 @@ type AdjustmentControlsProps = {
   upscaleFactor: UpscaleFactor;
   outputWidth: number;
   outputHeight: number;
+  /** Called on every change (live preview while dragging) */
   onChange: (adjustments: ImageAdjustments) => void;
+  /** Called once when slider is released (push to undo stack) */
+  onCommit?: (adjustments: ImageAdjustments) => void;
   onEffectsChange: (effects: EffectsSettings) => void;
+  onEffectsCommit?: (effects: EffectsSettings) => void;
   onUpscaleChange: (factor: UpscaleFactor) => void;
   disabled?: boolean;
 };
@@ -36,6 +40,7 @@ function AdjustmentSlider({
   min,
   max,
   onValueChange,
+  onValueCommit,
   disabled,
 }: {
   label: string;
@@ -43,6 +48,7 @@ function AdjustmentSlider({
   min: number;
   max: number;
   onValueChange: (value: number) => void;
+  onValueCommit?: (value: number) => void;
   disabled?: boolean;
 }) {
   return (
@@ -59,6 +65,7 @@ function AdjustmentSlider({
         step={1}
         value={[value]}
         onValueChange={([next]) => onValueChange(next)}
+        onValueCommit={onValueCommit ? ([next]) => onValueCommit(next) : undefined}
         disabled={disabled}
       />
     </div>
@@ -72,7 +79,9 @@ export function AdjustmentControls({
   outputWidth,
   outputHeight,
   onChange,
+  onCommit,
   onEffectsChange,
+  onEffectsCommit,
   onUpscaleChange,
   disabled,
 }: AdjustmentControlsProps) {
@@ -80,12 +89,22 @@ export function AdjustmentControls({
     onChange({ ...adjustments, [key]: value });
   };
 
+  const commit = (key: keyof ImageAdjustments, value: number) => {
+    onCommit?.({ ...adjustments, [key]: value });
+  };
+
   const updateEffect = (key: keyof EffectsSettings, value: number | LookType) => {
     onEffectsChange({ ...effects, [key]: value });
   };
 
+  const commitEffect = (key: keyof EffectsSettings, value: number | LookType) => {
+    onEffectsCommit?.({ ...effects, [key]: value });
+  };
+
   const handleReset = () => {
+    onCommit?.(DEFAULT_ADJUSTMENTS);
     onChange(DEFAULT_ADJUSTMENTS);
+    onEffectsCommit?.(DEFAULT_EFFECTS);
     onEffectsChange(DEFAULT_EFFECTS);
     onUpscaleChange(1);
   };
@@ -130,7 +149,7 @@ export function AdjustmentControls({
         <Button
           type="button"
           className="h-11 flex-1 hover-lift"
-          onClick={() => onChange(AUTO_ENHANCE_VALUES)}
+          onClick={() => { onCommit?.(AUTO_ENHANCE_VALUES); onChange(AUTO_ENHANCE_VALUES); }}
           disabled={disabled}
         >
           <Sparkles className="size-4" />
@@ -154,6 +173,7 @@ export function AdjustmentControls({
         min={-100}
         max={100}
         onValueChange={(value) => update("brightness", value)}
+        onValueCommit={(value) => commit("brightness", value)}
         disabled={disabled}
       />
       <AdjustmentSlider
@@ -162,6 +182,7 @@ export function AdjustmentControls({
         min={-100}
         max={100}
         onValueChange={(value) => update("contrast", value)}
+        onValueCommit={(value) => commit("contrast", value)}
         disabled={disabled}
       />
       <AdjustmentSlider
@@ -170,6 +191,7 @@ export function AdjustmentControls({
         min={0}
         max={100}
         onValueChange={(value) => update("sharpness", value)}
+        onValueCommit={(value) => commit("sharpness", value)}
         disabled={disabled}
       />
       <AdjustmentSlider
@@ -178,6 +200,7 @@ export function AdjustmentControls({
         min={0}
         max={100}
         onValueChange={(value) => update("noiseReduction", value)}
+        onValueCommit={(value) => commit("noiseReduction", value)}
         disabled={disabled}
       />
 
@@ -195,7 +218,7 @@ export function AdjustmentControls({
                   "shadow-[0_0_0_3px_oklch(0.48_0.2_265/0.2)]",
                 effects.look !== look.id && "hover-lift",
               )}
-              onClick={() => updateEffect("look", look.id)}
+              onClick={() => { commitEffect("look", look.id); updateEffect("look", look.id); }}
               disabled={disabled}
             >
               {look.label}
@@ -213,6 +236,7 @@ export function AdjustmentControls({
         min={0}
         max={100}
         onValueChange={(value) => updateEffect("vignette", value)}
+        onValueCommit={(value) => commitEffect("vignette", value)}
         disabled={disabled}
       />
 
@@ -229,6 +253,7 @@ export function AdjustmentControls({
           step={1}
           value={[effects.retouch]}
           onValueChange={([next]) => updateEffect("retouch", next)}
+          onValueCommit={([next]) => commitEffect("retouch", next)}
           disabled={disabled}
         />
         <p className="text-muted-foreground text-xs">

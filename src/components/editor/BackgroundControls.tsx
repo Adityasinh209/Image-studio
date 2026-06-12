@@ -1,11 +1,12 @@
 "use client";
 
-import { Eraser, Loader2, RotateCcw, Scissors } from "lucide-react";
+import { Eraser, Loader2, RotateCcw, Scissors, Zap } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
+import type { ModelStatus } from "@/lib/backgroundRemoval";
 import { type BackgroundSettings } from "@/lib/imageOps";
 
 const PRESET_COLORS = [
@@ -25,6 +26,7 @@ type BackgroundControlsProps = {
   cutoutCount: number;
   isProcessing: boolean;
   progress: string;
+  modelStatus?: ModelStatus;
   onBackgroundChange: (background: BackgroundSettings) => void;
   onRemoveBackgrounds: () => void;
   onRestoreOriginals: () => void;
@@ -32,12 +34,40 @@ type BackgroundControlsProps = {
   disabled?: boolean;
 };
 
+function ModelStatusBadge({ status }: { status: ModelStatus }) {
+  if (status === "idle") return null;
+  if (status === "ready") {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-green-500/10 px-2 py-0.5 text-[10px] font-medium text-green-600 dark:text-green-400">
+        <span className="size-1.5 rounded-full bg-green-500" />
+        AI ready
+      </span>
+    );
+  }
+  if (status === "loading") {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-600 dark:text-amber-400">
+        <Loader2 className="size-2.5 animate-spin" />
+        Loading AI…
+      </span>
+    );
+  }
+  return null;
+}
+
+/** Parse "Loading model… 42%" → 42, otherwise null */
+function parsePercent(msg: string): number | null {
+  const m = msg.match(/(\d+)%/);
+  return m ? parseInt(m[1], 10) : null;
+}
+
 export function BackgroundControls({
   background,
   imageCount,
   cutoutCount,
   isProcessing,
   progress,
+  modelStatus = "idle",
   onBackgroundChange,
   onRemoveBackgrounds,
   onRestoreOriginals,
@@ -48,14 +78,60 @@ export function BackgroundControls({
     onBackgroundChange({ ...background, type });
   };
 
+  const percent = isProcessing ? parsePercent(progress) : null;
+
   return (
     <div className="space-y-5">
       <div className="space-y-3 rounded-xl border border-border/50 bg-muted/20 p-4">
-        <Label>Remove background</Label>
+        <div className="flex items-center justify-between gap-2">
+          <Label>Remove background</Label>
+          <ModelStatusBadge status={modelStatus} />
+        </div>
         <p className="text-muted-foreground text-sm">
-          Runs locally in your browser. First use downloads the AI model, then
-          caches it for future runs.
+          Runs locally in your browser. First use downloads the AI model
+          (~25 MB), then caches it for instant future runs.
         </p>
+
+        {/* Progress bar */}
+        {isProcessing && (
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between gap-2 text-xs">
+              <span className="text-muted-foreground truncate">{progress}</span>
+              {percent !== null && (
+                <span className="text-primary shrink-0 tabular-nums">{percent}%</span>
+              )}
+            </div>
+            <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+              <div
+                className="bg-primary h-full rounded-full transition-all duration-300"
+                style={{
+                  width: percent !== null ? `${percent}%` : "100%",
+                  animation: percent === null ? "pulse 1.5s ease-in-out infinite" : undefined,
+                }}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Model pre-loading progress (silent warm-up) */}
+        {!isProcessing && modelStatus === "loading" && (
+          <div className="space-y-1.5">
+            <p className="text-muted-foreground text-xs">
+              Downloading AI model in the background…
+            </p>
+            <div className="h-1 w-full overflow-hidden rounded-full bg-muted">
+              <div className="bg-primary/50 h-full w-1/3 rounded-full animate-[slide-x_1.5s_ease-in-out_infinite]" />
+            </div>
+          </div>
+        )}
+
+        {modelStatus === "ready" && !isProcessing && (
+          <div className="flex items-center gap-1.5 text-xs text-green-600 dark:text-green-400">
+            <Zap className="size-3" />
+            <span>Model cached — removal will be instant.</span>
+          </div>
+        )}
+
         <div className="flex flex-col gap-2 sm:flex-row">
           <Button
             type="button"
@@ -66,7 +142,7 @@ export function BackgroundControls({
             {isProcessing ? (
               <>
                 <Loader2 className="size-4 animate-spin" />
-                {progress || "Processing..."}
+                {progress || "Processing…"}
               </>
             ) : (
               <>

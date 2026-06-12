@@ -45,6 +45,12 @@ import {
   type EditorImage,
 } from "@/lib/editorImages";
 import {
+  getModelStatus,
+  onModelStatusChange,
+  warmUpModel,
+  type ModelStatus,
+} from "@/lib/backgroundRemoval";
+import {
   computeOutputDimensions,
   DEFAULT_ADJUSTMENTS,
   DEFAULT_BACKGROUND,
@@ -152,6 +158,7 @@ export default function HomePage() {
   const [activePanel, setActivePanel] = useState<ControlPanel | null>(null);
   const [undoStack, setUndoStack] = useState<ImageOps[]>([]);
   const [isLgUp, setIsLgUp] = useState(false);
+  const [bgModelStatus, setBgModelStatus] = useState<ModelStatus>(() => getModelStatus());
 
   const imagesRef = useRef(images);
   const bgCancelRef = useRef(false);
@@ -275,6 +282,21 @@ export default function HomePage() {
     });
   }, [applyOpsSnapshot]);
 
+  /* Live-preview setters (no undo) — used while dragging sliders */
+  const setAdjustmentsDirect = useCallback(
+    (next: ImageAdjustments) => setAdjustments(next),
+    [],
+  );
+  const setEffectsDirect = useCallback(
+    (next: EffectsSettings) => setEffects(next),
+    [],
+  );
+  const setPortraitDirect = useCallback(
+    (next: PortraitSettings) => setPortrait(next),
+    [],
+  );
+
+  /* Committed setters — push undo only once when user finishes dragging */
   const handleAdjustmentsChange = useCallback(
     (next: ImageAdjustments) => {
       pushUndoSnapshot();
@@ -360,6 +382,11 @@ export default function HomePage() {
     };
   }, []);
 
+  /* Track AI model loading status for UI feedback */
+  useEffect(() => {
+    return onModelStatusChange(setBgModelStatus);
+  }, []);
+
   /* ── Handlers ─────────────────────────────────────────────────────────── */
   const handleFilesSelect = useCallback(async (incomingFiles: File[]) => {
     if (incomingFiles.length === 0) return;
@@ -400,6 +427,9 @@ export default function HomePage() {
         setEffects(DEFAULT_EFFECTS);
         setUndoStack([]);
         setPreview(null);
+        // Start downloading the AI model in the background so it's ready
+        // when the user opens Background or Portrait controls.
+        warmUpModel();
       }
 
       return next;
@@ -985,8 +1015,10 @@ export default function HomePage() {
                     upscaleFactor={resize.upscaleFactor}
                     outputWidth={outputDimensions.width}
                     outputHeight={outputDimensions.height}
-                    onChange={handleAdjustmentsChange}
-                    onEffectsChange={handleEffectsChange}
+                    onChange={setAdjustmentsDirect}
+                    onCommit={handleAdjustmentsChange}
+                    onEffectsChange={setEffectsDirect}
+                    onEffectsCommit={handleEffectsChange}
                     onUpscaleChange={(factor: UpscaleFactor) =>
                       handleResizePartialChange({ upscaleFactor: factor })
                     }
@@ -1017,6 +1049,7 @@ export default function HomePage() {
                     cutoutCount={cutoutCount}
                     isProcessing={isBgProcessing && !portrait.enabled}
                     progress={bgProgress}
+                    modelStatus={bgModelStatus}
                     onBackgroundChange={handleBackgroundChange}
                     onRemoveBackgrounds={handleRemoveBackgrounds}
                     onRestoreOriginals={handleRestoreOriginals}
@@ -1032,7 +1065,9 @@ export default function HomePage() {
                     originalHeight={activeImage?.originalHeight ?? 0}
                     isProcessing={portraitActivating}
                     progress={bgProgress}
-                    onPortraitChange={handlePortraitChange}
+                    modelStatus={bgModelStatus}
+                    onPortraitChange={setPortraitDirect}
+                    onPortraitCommit={handlePortraitChange}
                     onResizeChange={handleResizeChange}
                     onTurnOn={handlePortraitTurnOn}
                     onTurnOff={handlePortraitTurnOff}

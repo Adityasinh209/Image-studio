@@ -156,7 +156,7 @@ export function PortraitControls({
         <p className="text-muted-foreground text-sm">
           Crop to a portrait aspect ratio. Works independently of Portrait Mode.
         </p>
-        <div className="grid grid-cols-4 gap-2">
+        <div className="grid grid-cols-2 gap-2 min-[400px]:grid-cols-4">
           {ORIENTATIONS.map((o) => (
             <Button
               key={o.id}

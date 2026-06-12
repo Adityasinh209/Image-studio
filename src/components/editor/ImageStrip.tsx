@@ -42,10 +42,13 @@ export function ImageStrip({
         </Button>
       </div>
 
-      <div className="flex gap-2.5 overflow-x-auto pb-1">
+      <div className="flex gap-2.5 overflow-x-auto overscroll-x-contain pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {images.map((image, index) => {
           const isActive = image.id === activeId;
-          const thumbUrl = image.cutoutUrl ?? image.sourceUrl;
+          const thumbUrl =
+            image.bgRemovedByUser && image.cutoutUrl
+              ? image.cutoutUrl
+              : image.sourceUrl;
 
           return (
             <div key={image.id} className="relative shrink-0">
@@ -53,8 +56,8 @@ export function ImageStrip({
                 type="button"
                 onClick={() => onSelect(image.id)}
                 className={cn(
-                  "relative size-16 overflow-hidden rounded-xl border-2 transition-all duration-200 sm:size-20",
-                  image.cutoutUrl && "checkerboard",
+                  "relative size-[4.25rem] overflow-hidden rounded-xl border-2 transition-all duration-200 active:scale-[0.98] sm:size-20",
+                  image.bgRemovedByUser && image.cutoutUrl && "checkerboard",
                   isActive
                     ? "border-primary shadow-[0_0_0_3px_oklch(0.48_0.2_265/0.25)]"
                     : "border-border/60 hover:border-primary/40 hover:shadow-sm",
@@ -73,7 +76,7 @@ export function ImageStrip({
                     <Loader2 className="size-4 animate-spin text-white" />
                   </span>
                 )}
-                {image.bgStatus === "done" && (
+                {image.bgRemovedByUser && image.bgStatus === "done" && (
                   <span className="gradient-chip absolute top-1 right-1 rounded-md px-1.5 py-0.5 text-[9px] font-semibold">
                     Cut
                   </span>

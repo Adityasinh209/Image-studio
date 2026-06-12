@@ -28,6 +28,8 @@ type ExportBarProps = {
   ops: ImageOps;
   disabled?: boolean;
   compact?: boolean;
+  /** Optimized two-row layout for mobile bottom bar */
+  mobile?: boolean;
 };
 
 function createUniqueStamp(): string {
@@ -89,6 +91,7 @@ export function ExportBar({
   ops,
   disabled,
   compact = false,
+  mobile = false,
 }: ExportBarProps) {
   const [format, setFormat] = useState<ExportFormat>("png");
   const [maxSize, setMaxSize] = useState("0");
@@ -174,6 +177,70 @@ export function ExportBar({
     items.length > 1 ? `Download all (${items.length})` : "Download";
   const formatLabel = format.toUpperCase();
 
+  if (mobile) {
+    return (
+      <div className="flex w-full flex-col gap-2">
+        <div className="flex items-center gap-2">
+          <div className="min-w-0 flex-1 space-y-1">
+            <Select
+              value={format}
+              onValueChange={(value) => setFormat(value as ExportFormat)}
+              disabled={disabled || isExporting}
+            >
+              <SelectTrigger className="h-11 w-full rounded-xl">
+                <SelectValue placeholder="Format" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="png">PNG</SelectItem>
+                <SelectItem value="jpg">JPG</SelectItem>
+                <SelectItem value="webp">WEBP</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-muted-foreground text-[11px]">
+              Format:{" "}
+              <span className="text-foreground font-semibold">{formatLabel}</span>
+            </p>
+          </div>
+          <Button
+            type="button"
+            className="h-11 shrink-0 rounded-xl px-4 hover-lift"
+            onClick={handleDownload}
+            disabled={disabled || isExporting || items.length === 0}
+          >
+            {isExporting ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <Download className="size-4" />
+            )}
+            <span className="sr-only sm:not-sr-only">
+              {isExporting
+                ? progress || "Processing..."
+                : items.length > 1
+                  ? `All (${items.length})`
+                  : "Save"}
+            </span>
+          </Button>
+        </div>
+        <Select
+          value={maxSize}
+          onValueChange={setMaxSize}
+          disabled={disabled || isExporting}
+        >
+          <SelectTrigger className="h-10 w-full rounded-xl text-sm">
+            <SelectValue placeholder="Max file size" />
+          </SelectTrigger>
+          <SelectContent>
+            {SIZE_OPTIONS.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+    );
+  }
+
   return (
     <div
       className={cn(
@@ -185,7 +252,7 @@ export function ExportBar({
     >
       <div
         className={cn(
-          "space-y-2",
+          "space-y-1.5",
           compact ? "min-w-0 flex-1" : "w-full sm:w-auto",
         )}
       >
@@ -197,7 +264,7 @@ export function ExportBar({
         >
           <SelectTrigger
             className={cn(
-              "rounded-xl",
+              "h-11 rounded-xl",
               compact ? "w-full" : "w-full sm:w-40",
             )}
           >
@@ -210,7 +277,8 @@ export function ExportBar({
           </SelectContent>
         </Select>
         <p className="text-muted-foreground text-xs">
-          Selected format: <span className="text-foreground font-semibold">{formatLabel}</span>
+          Format:{" "}
+          <span className="text-foreground font-semibold">{formatLabel}</span>
         </p>
       </div>
       {!compact && (
@@ -221,7 +289,7 @@ export function ExportBar({
             onValueChange={setMaxSize}
             disabled={disabled || isExporting}
           >
-            <SelectTrigger className="w-full rounded-xl sm:w-44">
+            <SelectTrigger className="h-11 w-full rounded-xl sm:w-44">
               <SelectValue placeholder="No limit" />
             </SelectTrigger>
             <SelectContent>
@@ -240,7 +308,7 @@ export function ExportBar({
       <Button
         type="button"
         className={cn(
-          "hover-lift rounded-xl",
+          "h-11 hover-lift rounded-xl",
           compact ? "shrink-0" : "w-full sm:ml-auto sm:w-auto",
         )}
         onClick={handleDownload}
@@ -249,16 +317,27 @@ export function ExportBar({
         {isExporting ? (
           <>
             <Loader2 className="size-4 animate-spin" />
-            <span className={compact ? "sr-only sm:not-sr-only" : ""}>
-              {progress || "Processing..."}
-            </span>
+            {compact ? (
+              <span className="sr-only sm:not-sr-only">
+                {progress || "Processing..."}
+              </span>
+            ) : (
+              <span>{progress || "Processing..."}</span>
+            )}
           </>
         ) : (
           <>
             <Download className="size-4" />
-            <span className={compact ? "" : ""}>
-              {buttonLabel} ({formatLabel})
-            </span>
+            {compact ? (
+              <span className="sr-only min-[380px]:not-sr-only">
+                {items.length > 1 ? `All (${items.length})` : "Download"} ·{" "}
+                {formatLabel}
+              </span>
+            ) : (
+              <span>
+                {buttonLabel} ({formatLabel})
+              </span>
+            )}
           </>
         )}
       </Button>

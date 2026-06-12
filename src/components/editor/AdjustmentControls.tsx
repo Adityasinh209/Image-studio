@@ -46,8 +46,8 @@ function AdjustmentSlider({
   disabled?: boolean;
 }) {
   return (
-    <div className="space-y-3 rounded-xl border border-border/50 bg-muted/20 p-4">
-      <div className="flex items-center justify-between">
+    <div className="space-y-3 rounded-xl border border-border/50 bg-muted/20 p-3.5 sm:p-4">
+      <div className="flex items-center justify-between gap-2">
         <Label className="text-sm">{label}</Label>
         <span className="bg-muted rounded-md px-2 py-0.5 font-mono text-xs tabular-nums">
           {value}
@@ -91,7 +91,7 @@ export function AdjustmentControls({
   };
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4 sm:space-y-5">
       <div className="space-y-3 rounded-xl border border-border/50 bg-muted/20 p-4">
         <div className="flex items-center justify-between">
           <Label>Resolution</Label>
@@ -183,7 +183,7 @@ export function AdjustmentControls({
 
       <div className="space-y-3 rounded-xl border border-border/50 bg-muted/20 p-4">
         <Label>Looks</Label>
-        <div className="grid grid-cols-4 gap-2">
+        <div className="grid grid-cols-2 gap-2 min-[400px]:grid-cols-4">
           {LOOKS.map((look) => (
             <Button
               key={look.id}

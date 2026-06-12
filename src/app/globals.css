@@ -415,6 +415,147 @@
     }
   }
 
+  /* ── Bottom control-panel animations ──────────────────────────────────── */
+
+  /* Outer grid wrapper: height collapses/expands via grid-template-rows */
+  .ctrl-panel-grid {
+    display: grid;
+    grid-template-rows: 0fr;
+    transition: grid-template-rows 320ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .ctrl-panel-grid[data-open="true"] {
+    grid-template-rows: 1fr;
+  }
+
+  /* Middle: must be overflow:hidden + min-height:0 for the grid trick */
+  .ctrl-panel-inner {
+    overflow: hidden;
+    min-height: 0;
+  }
+
+  /* Inner content: fade + slide-up on enter, instant on exit (feels snappy) */
+  .ctrl-panel-content {
+    opacity: 0;
+    transform: translateY(10px);
+    transition:
+      opacity 240ms ease 60ms,
+      transform 300ms cubic-bezier(0.22, 1, 0.36, 1) 60ms;
+  }
+  .ctrl-panel-grid[data-open="true"] .ctrl-panel-content {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  /* Floating toolbar button (inactive) */
+  .ctrl-tab-float {
+    background: oklch(1 0 0 / 0.82);
+    backdrop-filter: blur(20px) saturate(1.6);
+    -webkit-backdrop-filter: blur(20px) saturate(1.6);
+    border: 1px solid oklch(0.88 0.02 280 / 0.55);
+    box-shadow:
+      0 4px 18px oklch(0 0 0 / 0.1),
+      0 1px 0 oklch(1 0 0 / 0.6) inset;
+  }
+  .dark .ctrl-tab-float {
+    background: oklch(0.18 0.025 280 / 0.88);
+    border-color: oklch(0.35 0.03 280 / 0.55);
+    box-shadow:
+      0 4px 18px oklch(0 0 0 / 0.35),
+      0 1px 0 oklch(1 0 0 / 0.08) inset;
+  }
+
+  /* Floating toolbar button: active glow */
+  .ctrl-tab-active {
+    background: var(--gradient-primary);
+    color: oklch(0.99 0.002 247);
+    border-color: transparent;
+    box-shadow:
+      0 4px 18px oklch(0.5 0.24 280 / 0.42),
+      inset 0 1px 0 oklch(1 0 0 / 0.22);
+  }
+
+  /* Floating expandable panel card */
+  .ctrl-panel-float {
+    background: oklch(1 0 0 / 0.9);
+    backdrop-filter: blur(24px) saturate(1.7);
+    -webkit-backdrop-filter: blur(24px) saturate(1.7);
+    border: 1px solid oklch(0.88 0.02 280 / 0.55);
+    border-radius: 1.25rem;
+    box-shadow:
+      0 12px 40px oklch(0 0 0 / 0.14),
+      0 1px 0 oklch(1 0 0 / 0.6) inset;
+  }
+  .dark .ctrl-panel-float {
+    background: oklch(0.16 0.025 280 / 0.92);
+    border-color: oklch(0.35 0.03 280 / 0.55);
+    box-shadow:
+      0 12px 40px oklch(0 0 0 / 0.4),
+      0 1px 0 oklch(1 0 0 / 0.08) inset;
+  }
+
+  /* Mobile bottom-sheet: full-width, rounded top */
+  @media (max-width: 1023px) {
+    .ctrl-panel-content.ctrl-panel-float {
+      border-radius: 1.25rem 1.25rem 0 0;
+      border-bottom: none;
+    }
+
+    .ctrl-panel-scroll {
+      -webkit-overflow-scrolling: touch;
+      overscroll-behavior: contain;
+      touch-action: pan-y;
+    }
+
+    .ctrl-toolbar-scroll {
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: none;
+      -ms-overflow-style: none;
+    }
+    .ctrl-toolbar-scroll::-webkit-scrollbar {
+      display: none;
+    }
+  }
+
+  /* Dim backdrop when mobile sheet is open */
+  .ctrl-sheet-backdrop {
+    background: oklch(0 0 0 / 0.45);
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
+    animation: ctrl-backdrop-in 220ms ease;
+  }
+  @keyframes ctrl-backdrop-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  .ctrl-sheet-handle {
+    width: 2.5rem;
+    height: 0.25rem;
+    border-radius: 9999px;
+    background: oklch(0.7 0.02 280 / 0.55);
+  }
+  .dark .ctrl-sheet-handle {
+    background: oklch(0.45 0.02 280 / 0.7);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .ctrl-panel-grid {
+      transition: none !important;
+    }
+    .ctrl-panel-content {
+      transition: none !important;
+      opacity: 1 !important;
+      transform: none !important;
+    }
+    .ctrl-sheet-backdrop {
+      animation: none !important;
+    }
+  }
+
   .checkerboard {
     background-color: #ffffff;
     background-image:

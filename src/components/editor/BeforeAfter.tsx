@@ -11,6 +11,9 @@ type BeforeAfterProps = {
   outputWidth: number;
   outputHeight: number;
   showCheckerboard?: boolean;
+  /** When true, scales the comparison to fit its parent height (laptop/desktop). */
+  fill?: boolean;
+  onUploadClick?: () => void;
   className?: string;
 };
 
@@ -20,6 +23,8 @@ export function BeforeAfter({
   outputWidth,
   outputHeight,
   showCheckerboard = false,
+  fill = false,
+  onUploadClick,
   className,
 }: BeforeAfterProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -74,12 +79,23 @@ export function BeforeAfter({
     return (
       <div
         className={cn(
-          "bg-muted/30 text-muted-foreground flex min-h-48 flex-col items-center justify-center gap-2 rounded-2xl border border-dashed px-4 text-center text-sm sm:min-h-64 md:min-h-80",
+          "bg-muted/30 text-muted-foreground flex min-h-44 flex-col items-center justify-center gap-3 rounded-2xl border border-dashed px-4 py-6 text-center text-sm sm:min-h-56",
           className,
         )}
       >
         <span className="text-2xl opacity-40">↔</span>
-        Upload and edit an image to compare before and after
+        <p className="max-w-xs leading-relaxed">
+          Upload and edit an image to compare before &amp; after
+        </p>
+        {/* {onUploadClick && (
+          <button
+            type="button"
+            className="text-primary text-sm font-medium underline-offset-4 hover:underline"
+            onClick={onUploadClick}
+          >
+            Open upload
+          </button>
+        )} */}
       </div>
     );
   }
@@ -88,16 +104,27 @@ export function BeforeAfter({
     outputWidth > 0 && outputHeight > 0
       ? `${outputWidth} / ${outputHeight}`
       : "16 / 9";
+  const isLandscape = outputWidth >= outputHeight;
 
-  return (
+  const comparison = (
     <div
       ref={containerRef}
       className={cn(
-        "relative w-full overflow-hidden rounded-2xl border shadow-[var(--shadow-soft)] select-none",
+        "relative overflow-hidden rounded-2xl border shadow-[var(--shadow-soft)] select-none",
         showCheckerboard ? "checkerboard" : "bg-black",
-        className,
+        fill ? "max-h-full max-w-full" : "max-h-full w-full",
       )}
-      style={{ aspectRatio }}
+      style={
+        fill
+          ? {
+              aspectRatio,
+              width: isLandscape ? "100%" : "auto",
+              height: isLandscape ? "auto" : "100%",
+              maxWidth: "100%",
+              maxHeight: "100%",
+            }
+          : { aspectRatio }
+      }
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerUp}
@@ -127,21 +154,45 @@ export function BeforeAfter({
           type="button"
           aria-label="Drag to compare"
           className={cn(
-            "gradient-chip absolute top-1/2 left-1/2 flex size-12 -translate-x-1/2 -translate-y-1/2 cursor-ew-resize items-center justify-center rounded-full shadow-lg touch-none sm:size-10",
+            "gradient-chip absolute top-1/2 left-1/2 flex size-14 -translate-x-1/2 -translate-y-1/2 cursor-ew-resize items-center justify-center rounded-full shadow-lg touch-none sm:size-11 lg:size-10",
             isDragging ? "scale-110" : "hover:scale-105",
             "transition-transform",
           )}
           onPointerDown={handlePointerDown}
         >
-          <GripVertical className="size-4" />
+          <GripVertical className="size-5 sm:size-4" />
         </button>
       </div>
-      <div className="pointer-events-none absolute top-3 left-3 rounded-full border border-white/10 bg-black/50 px-3 py-1 text-xs font-medium text-white backdrop-blur-md">
+      <div className="pointer-events-none absolute top-2 left-2 rounded-full border border-white/10 bg-black/50 px-2.5 py-0.5 text-[10px] font-medium text-white backdrop-blur-md sm:top-3 sm:left-3 sm:px-3 sm:py-1 sm:text-xs">
         Before
       </div>
-      <div className="pointer-events-none absolute top-3 right-3 rounded-full border border-white/10 bg-black/50 px-3 py-1 text-xs font-medium text-white backdrop-blur-md">
+      <div className="pointer-events-none absolute top-2 right-2 rounded-full border border-white/10 bg-black/50 px-2.5 py-0.5 text-[10px] font-medium text-white backdrop-blur-md sm:top-3 sm:right-3 sm:px-3 sm:py-1 sm:text-xs">
         After
       </div>
+    </div>
+  );
+
+  if (fill) {
+    return (
+      <div
+        className={cn(
+          "flex h-full min-h-0 w-full items-center justify-center",
+          className,
+        )}
+      >
+        {comparison}
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className={cn(
+        "flex w-full items-center justify-center overflow-hidden",
+        className,
+      )}
+    >
+      {comparison}
     </div>
   );
 }

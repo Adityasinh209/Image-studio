@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
+  <defs>
+    <linearGradient id="pixor-grad" x1="6" y1="4" x2="26" y2="28" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#8B5CF6" />
+      <stop offset="1" stop-color="#D946EF" />
+    </linearGradient>
+  </defs>
+  <rect width="32" height="32" rx="8" fill="url(#pixor-grad)" />
+  <g
+    transform="translate(4 4)"
+    stroke="#FAFAFE"
+    stroke-width="1.75"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    fill="none"
+  >
+    <path d="m15 4-4.5 4.5" />
+    <path d="m13.5 5.5 4 4" />
+    <path d="m18 7-4.5 4.5" />
+    <path d="m21 2-9.6 9.6" />
+    <circle cx="7.5" cy="16.5" r="2.5" />
+  </g>
+</svg>

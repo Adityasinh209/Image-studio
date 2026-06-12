@@ -13,6 +13,8 @@ export type EditorImage = {
   cutoutUrl: string | null;
   cutoutFile: File | null;
   bgStatus: BgStatus;
+  /** True when the user explicitly removed the background (not portrait-only cutout). */
+  bgRemovedByUser: boolean;
 };
 
 export function createImageId(): string {
@@ -37,6 +39,7 @@ export function loadEditorImage(file: File): Promise<EditorImage> {
         cutoutUrl: null,
         cutoutFile: null,
         bgStatus: "none",
+        bgRemovedByUser: false,
       });
     };
 

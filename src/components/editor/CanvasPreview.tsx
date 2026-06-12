@@ -35,6 +35,8 @@ type CanvasPreviewProps = {
   background: BackgroundSettings;
   portrait: PortraitSettings;
   effects: EffectsSettings;
+  /** Use cutout for transparent background (user-initiated removal only). */
+  useBackgroundCutout?: boolean;
   onPreviewChange?: (preview: PreviewUrls | null) => void;
   hidden?: boolean;
 };
@@ -58,6 +60,7 @@ export function CanvasPreview({
   background,
   portrait,
   effects,
+  useBackgroundCutout = false,
   onPreviewChange,
   hidden = false,
 }: CanvasPreviewProps) {
@@ -133,8 +136,7 @@ export function CanvasPreview({
         applyCanvasFilters(ctx, adjustments);
 
         const useCutout =
-          !portrait.enabled &&
-          Boolean(cutoutImage?.complete);
+          useBackgroundCutout && Boolean(cutoutImage?.complete);
         const sourceImage = useCutout ? cutoutImage! : originalImage;
         drawImageToCanvas(
           ctx,
@@ -207,6 +209,7 @@ export function CanvasPreview({
     originalWidth,
     portrait,
     resize,
+    useBackgroundCutout,
   ]);
 
   renderPreviewRef.current = renderPreview;
@@ -263,6 +266,7 @@ export function CanvasPreview({
     cutoutUrl,
     originalWidth,
     originalHeight,
+    useBackgroundCutout,
   ]);
 
   if (hidden) {

@@ -18,7 +18,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Smart Image Studio",
+  title: "PIXOR",
   description:
     "Upload, enhance, resize, and export images optimized for social media platforms.",
 };

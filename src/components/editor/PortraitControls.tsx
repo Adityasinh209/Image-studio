@@ -36,6 +36,8 @@ type PortraitControlsProps = {
   onResizeChange: (resize: ResizeSettings) => void;
   onTurnOn: () => void;
   onTurnOff: () => void;
+  onDismiss?: () => void;
+  onBeginEdit?: () => void;
   disabled?: boolean;
 };
 
@@ -58,6 +60,8 @@ export function PortraitControls({
   onResizeChange,
   onTurnOn,
   onTurnOff,
+  onDismiss,
+  onBeginEdit,
   disabled,
 }: PortraitControlsProps) {
   const activeOrientation = ORIENTATIONS.find((o) => {
@@ -76,6 +80,7 @@ export function PortraitControls({
         maintainAspectRatio: true,
         scalePercent: 100,
       });
+      onDismiss?.();
       return;
     }
     const dims = ratioToCoverDimensions(originalWidth, originalHeight, o.w, o.h);
@@ -86,6 +91,7 @@ export function PortraitControls({
       mode: "cover",
       maintainAspectRatio: false,
     });
+    onDismiss?.();
   };
 
   const percent = isProcessing ? parsePercent(progress) : null;
@@ -195,9 +201,10 @@ export function PortraitControls({
               max={100}
               step={1}
               value={[portrait.blurStrength]}
-              onValueChange={([v]) =>
-                onPortraitChange({ ...portrait, blurStrength: v })
-              }
+              onValueChange={([v]) => {
+                onBeginEdit?.();
+                onPortraitChange({ ...portrait, blurStrength: v });
+              }}
               onValueCommit={([v]) =>
                 onPortraitCommit?.({ ...portrait, blurStrength: v })
               }

@@ -15,7 +15,13 @@ type ResizeControlsProps = {
   resize: ResizeSettings;
   originalWidth: number;
   originalHeight: number;
+  /** Live preview while dragging scale slider */
   onChange: (resize: ResizeSettings) => void;
+  /** Finalize slider drag */
+  onCommit?: (resize: ResizeSettings) => void;
+  onBeginEdit?: () => void;
+  /** Width/height inputs — pushes undo immediately */
+  onDimensionChange: (resize: ResizeSettings) => void;
   disabled?: boolean;
 };
 
@@ -24,10 +30,13 @@ export function ResizeControls({
   originalWidth,
   originalHeight,
   onChange,
+  onCommit,
+  onBeginEdit,
+  onDimensionChange,
   disabled,
 }: ResizeControlsProps) {
-  const update = (partial: Partial<ResizeSettings>) => {
-    onChange({ ...resize, ...partial });
+  const updateDimensions = (partial: Partial<ResizeSettings>) => {
+    onDimensionChange({ ...resize, ...partial });
   };
 
   const output = computeOutputDimensions(originalWidth, originalHeight, resize);
@@ -36,34 +45,28 @@ export function ResizeControls({
     const width = Math.max(0, Number.parseInt(value, 10) || 0);
     if (resize.maintainAspectRatio && originalWidth > 0 && width > 0) {
       const aspect = originalHeight / originalWidth;
-      update({
+      updateDimensions({
         width,
         height: Math.round(width * aspect),
         scalePercent: 100,
-        mode: "scale",
       });
       return;
     }
-    update({ width, scalePercent: 100, mode: "scale" });
+    updateDimensions({ width, scalePercent: 100 });
   };
 
   const handleHeightChange = (value: string) => {
     const height = Math.max(0, Number.parseInt(value, 10) || 0);
     if (resize.maintainAspectRatio && originalHeight > 0 && height > 0) {
       const aspect = originalWidth / originalHeight;
-      update({
+      updateDimensions({
         height,
         width: Math.round(height * aspect),
         scalePercent: 100,
-        mode: "scale",
       });
       return;
     }
-    update({ height, scalePercent: 100, mode: "scale" });
-  };
-
-  const handleScaleChange = (scalePercent: number) => {
-    update({ scalePercent, width: 0, height: 0, mode: "scale" });
+    updateDimensions({ height, scalePercent: 100 });
   };
 
   return (
@@ -80,7 +83,25 @@ export function ResizeControls({
           max={200}
           step={1}
           value={[resize.scalePercent]}
-          onValueChange={([scalePercent]) => handleScaleChange(scalePercent)}
+          onValueChange={([scalePercent]) => {
+            onBeginEdit?.();
+            onChange({
+              ...resize,
+              scalePercent,
+              width: 0,
+              height: 0,
+              mode: "scale",
+            });
+          }}
+          onValueCommit={([scalePercent]) =>
+            onCommit?.({
+              ...resize,
+              scalePercent,
+              width: 0,
+              height: 0,
+              mode: "scale",
+            })
+          }
           disabled={disabled}
         />
       </div>
@@ -115,6 +136,7 @@ export function ResizeControls({
       {output.width > 0 && output.height > 0 && (
         <p className="text-muted-foreground text-sm">
           Output: {output.width} × {output.height}px
+          {resize.mode === "cover" && " (cover crop)"}
         </p>
       )}
 
@@ -123,7 +145,7 @@ export function ResizeControls({
         variant="outline"
         className="h-11 w-full rounded-xl"
         onClick={() =>
-          update({ maintainAspectRatio: !resize.maintainAspectRatio })
+          updateDimensions({ maintainAspectRatio: !resize.maintainAspectRatio })
         }
         disabled={disabled}
       >

@@ -7,9 +7,6 @@ import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { cn } from "@/lib/utils";
 import {
-  AUTO_ENHANCE_VALUES,
-  DEFAULT_ADJUSTMENTS,
-  DEFAULT_EFFECTS,
   LOOKS,
   UPSCALE_FACTORS,
   type EffectsSettings,
@@ -24,13 +21,16 @@ type AdjustmentControlsProps = {
   upscaleFactor: UpscaleFactor;
   outputWidth: number;
   outputHeight: number;
-  /** Called on every change (live preview while dragging) */
   onChange: (adjustments: ImageAdjustments) => void;
-  /** Called once when slider is released (push to undo stack) */
   onCommit?: (adjustments: ImageAdjustments) => void;
+  onBeginEdit?: () => void;
   onEffectsChange: (effects: EffectsSettings) => void;
   onEffectsCommit?: (effects: EffectsSettings) => void;
+  onAutoEnhance?: () => void;
+  onLookSelect?: (look: LookType) => void;
+  onReset?: () => void;
   onUpscaleChange: (factor: UpscaleFactor) => void;
+  onDismiss?: () => void;
   disabled?: boolean;
 };
 
@@ -80,12 +80,17 @@ export function AdjustmentControls({
   outputHeight,
   onChange,
   onCommit,
+  onBeginEdit,
   onEffectsChange,
   onEffectsCommit,
+  onAutoEnhance,
+  onLookSelect,
+  onReset,
   onUpscaleChange,
   disabled,
 }: AdjustmentControlsProps) {
   const update = (key: keyof ImageAdjustments, value: number) => {
+    onBeginEdit?.();
     onChange({ ...adjustments, [key]: value });
   };
 
@@ -94,19 +99,12 @@ export function AdjustmentControls({
   };
 
   const updateEffect = (key: keyof EffectsSettings, value: number | LookType) => {
+    onBeginEdit?.();
     onEffectsChange({ ...effects, [key]: value });
   };
 
   const commitEffect = (key: keyof EffectsSettings, value: number | LookType) => {
     onEffectsCommit?.({ ...effects, [key]: value });
-  };
-
-  const handleReset = () => {
-    onCommit?.(DEFAULT_ADJUSTMENTS);
-    onChange(DEFAULT_ADJUSTMENTS);
-    onEffectsCommit?.(DEFAULT_EFFECTS);
-    onEffectsChange(DEFAULT_EFFECTS);
-    onUpscaleChange(1);
   };
 
   return (
@@ -149,7 +147,7 @@ export function AdjustmentControls({
         <Button
           type="button"
           className="h-11 flex-1 hover-lift"
-          onClick={() => { onCommit?.(AUTO_ENHANCE_VALUES); onChange(AUTO_ENHANCE_VALUES); }}
+          onClick={() => onAutoEnhance?.()}
           disabled={disabled}
         >
           <Sparkles className="size-4" />
@@ -159,7 +157,7 @@ export function AdjustmentControls({
           type="button"
           variant="outline"
           className="h-11 shrink-0"
-          onClick={handleReset}
+          onClick={() => onReset?.()}
           disabled={disabled}
         >
           <RotateCcw className="size-4" />
@@ -218,7 +216,7 @@ export function AdjustmentControls({
                   "shadow-[0_0_0_3px_oklch(0.48_0.2_265/0.2)]",
                 effects.look !== look.id && "hover-lift",
               )}
-              onClick={() => { commitEffect("look", look.id); updateEffect("look", look.id); }}
+              onClick={() => onLookSelect?.(look.id)}
               disabled={disabled}
             >
               {look.label}

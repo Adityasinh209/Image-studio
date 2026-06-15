@@ -1,6 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  startTransition,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   Camera,
   Columns2,
@@ -20,8 +27,7 @@ import { toast } from "sonner";
 
 import { AdjustmentControls } from "@/components/editor/AdjustmentControls";
 import { BackgroundControls } from "@/components/editor/BackgroundControls";
-import { BeforeAfter } from "@/components/editor/BeforeAfter";
-import { CanvasPreview } from "@/components/editor/CanvasPreview";
+import { EditorComparison } from "@/components/editor/EditorComparison";
 import { ExportBar } from "@/components/editor/ExportBar";
 import { ImageStrip } from "@/components/editor/ImageStrip";
 import { PortraitControls } from "@/components/editor/PortraitControls";
@@ -38,8 +44,10 @@ import {
 } from "@/components/ui/card";
 import {
   createCutoutFile,
+  createThumbnailFromBlob,
   getExportFile,
   loadEditorImage,
+  MAX_BATCH_IMAGES,
   revokeEditorImage,
   revokeEditorImages,
   type EditorImage,
@@ -52,6 +60,7 @@ import {
 } from "@/lib/backgroundRemoval";
 import {
   computeOutputDimensions,
+  AUTO_ENHANCE_VALUES,
   DEFAULT_ADJUSTMENTS,
   DEFAULT_BACKGROUND,
   DEFAULT_EFFECTS,
@@ -61,8 +70,8 @@ import {
   type EffectsSettings,
   type ImageAdjustments,
   type ImageOps,
+  type LookType,
   type PortraitSettings,
-  type PreviewUrls,
   type ResizeSettings,
   type UpscaleFactor,
 } from "@/lib/imageOps";
@@ -138,7 +147,6 @@ export default function HomePage() {
   /* Images */
   const [images, setImages] = useState<EditorImage[]>([]);
   const [activeImageId, setActiveImageId] = useState<string | null>(null);
-  const [preview, setPreview] = useState<PreviewUrls | null>(null);
 
   /* Editing state */
   const [adjustments, setAdjustments] =
@@ -210,16 +218,19 @@ export default function HomePage() {
         file: getExportFile(img),
         originalFile: img.file,
         cutoutFile: img.cutoutFile,
+        bgRemovedByUser: img.bgRemovedByUser,
       })),
     [images],
   );
 
-  const useBackgroundCutout =
-    !portrait.enabled &&
-    background.type === "transparent" &&
-    Boolean(activeImage?.bgRemovedByUser && activeImage?.cutoutUrl);
+  const hasUserCutout = Boolean(
+    activeImage?.bgRemovedByUser && activeImage?.cutoutUrl,
+  );
 
-  const showCheckerboard = useBackgroundCutout;
+  const useBackgroundCutout = !portrait.enabled && hasUserCutout;
+
+  const showCheckerboard =
+    useBackgroundCutout && background.type === "transparent";
 
   const hasImages = images.length > 0;
   const canUndo = hasImages && undoStack.length > 0;
@@ -227,8 +238,13 @@ export default function HomePage() {
 
   /* ── Helpers ──────────────────────────────────────────────────────────── */
   const togglePanel = useCallback((id: ControlPanel) => {
+    if (id === "background" || id === "portrait") {
+      warmUpModel();
+    }
     setActivePanel((prev) => (prev === id ? null : id));
   }, []);
+
+  const closePanel = useCallback(() => setActivePanel(null), []);
 
   const cloneOps = useCallback((source: ImageOps): ImageOps => {
     return {
@@ -282,35 +298,56 @@ export default function HomePage() {
     });
   }, [applyOpsSnapshot]);
 
-  /* Live-preview setters (no undo) — used while dragging sliders */
-  const setAdjustmentsDirect = useCallback(
-    (next: ImageAdjustments) => setAdjustments(next),
-    [],
-  );
-  const setEffectsDirect = useCallback(
-    (next: EffectsSettings) => setEffects(next),
-    [],
-  );
-  const setPortraitDirect = useCallback(
-    (next: PortraitSettings) => setPortrait(next),
-    [],
-  );
+  /* Push undo once at the start of a slider drag — not on every tick or commit */
+  const sliderUndoPushedRef = useRef(false);
 
-  /* Committed setters — push undo only once when user finishes dragging */
-  const handleAdjustmentsChange = useCallback(
+  const beginSliderUndo = useCallback(() => {
+    if (!sliderUndoPushedRef.current && hasImages) {
+      pushUndoSnapshot();
+      sliderUndoPushedRef.current = true;
+    }
+  }, [hasImages, pushUndoSnapshot]);
+
+  const endSliderUndo = useCallback(() => {
+    sliderUndoPushedRef.current = false;
+  }, []);
+
+  /* Live-preview setters (no undo) — non-urgent so sliders stay responsive */
+  const setAdjustmentsDirect = useCallback((next: ImageAdjustments) => {
+    startTransition(() => setAdjustments(next));
+  }, []);
+  const setEffectsDirect = useCallback((next: EffectsSettings) => {
+    startTransition(() => setEffects(next));
+  }, []);
+  const setPortraitDirect = useCallback((next: PortraitSettings) => {
+    startTransition(() => setPortrait(next));
+  }, []);
+  const setResizeDirect = useCallback((next: ResizeSettings) => {
+    startTransition(() => setResize(next));
+  }, []);
+
+  const handleAdjustmentsCommit = useCallback(
     (next: ImageAdjustments) => {
-      pushUndoSnapshot();
       setAdjustments(next);
+      endSliderUndo();
     },
-    [pushUndoSnapshot],
+    [endSliderUndo],
   );
 
-  const handleEffectsChange = useCallback(
+  const handleEffectsCommit = useCallback(
     (next: EffectsSettings) => {
-      pushUndoSnapshot();
       setEffects(next);
+      endSliderUndo();
     },
-    [pushUndoSnapshot],
+    [endSliderUndo],
+  );
+
+  const handleResizeCommit = useCallback(
+    (next: ResizeSettings) => {
+      setResize(next);
+      endSliderUndo();
+    },
+    [endSliderUndo],
   );
 
   const handleResizeChange = useCallback(
@@ -329,6 +366,37 @@ export default function HomePage() {
     [pushUndoSnapshot],
   );
 
+  const handleEnhanceReset = useCallback(() => {
+    pushUndoSnapshot();
+    setAdjustments(DEFAULT_ADJUSTMENTS);
+    setEffects(DEFAULT_EFFECTS);
+    setResize((current) => ({ ...current, upscaleFactor: 1 }));
+    closePanel();
+  }, [closePanel, pushUndoSnapshot]);
+
+  const handleAutoEnhance = useCallback(() => {
+    pushUndoSnapshot();
+    setAdjustments(AUTO_ENHANCE_VALUES);
+    closePanel();
+  }, [closePanel, pushUndoSnapshot]);
+
+  const handleLookSelect = useCallback(
+    (look: LookType) => {
+      pushUndoSnapshot();
+      setEffects((current) => ({ ...current, look }));
+      closePanel();
+    },
+    [closePanel, pushUndoSnapshot],
+  );
+
+  const handleUpscaleChange = useCallback(
+    (factor: UpscaleFactor) => {
+      handleResizePartialChange({ upscaleFactor: factor });
+      closePanel();
+    },
+    [closePanel, handleResizePartialChange],
+  );
+
   const handleBackgroundChange = useCallback(
     (next: BackgroundSettings) => {
       pushUndoSnapshot();
@@ -337,12 +405,12 @@ export default function HomePage() {
     [pushUndoSnapshot],
   );
 
-  const handlePortraitChange = useCallback(
+  const handlePortraitCommit = useCallback(
     (next: PortraitSettings) => {
-      pushUndoSnapshot();
       setPortrait(next);
+      endSliderUndo();
     },
-    [pushUndoSnapshot],
+    [endSliderUndo],
   );
 
   /* Close panel with Escape key */
@@ -390,18 +458,29 @@ export default function HomePage() {
   /* ── Handlers ─────────────────────────────────────────────────────────── */
   const handleFilesSelect = useCallback(async (incomingFiles: File[]) => {
     if (incomingFiles.length === 0) return;
-    const results = await Promise.allSettled(
-      incomingFiles.map((file) => loadEditorImage(file)),
-    );
+
+    const remaining = MAX_BATCH_IMAGES - imagesRef.current.length;
+    if (remaining <= 0) {
+      toast.error(`Maximum ${MAX_BATCH_IMAGES} images allowed.`);
+      return;
+    }
+
+    const filesToLoad = incomingFiles.slice(0, remaining);
+    if (filesToLoad.length < incomingFiles.length) {
+      toast.warning(`Only ${filesToLoad.length} image(s) added (${MAX_BATCH_IMAGES} max).`);
+    }
 
     const loaded: EditorImage[] = [];
     const failed: string[] = [];
 
-    for (const result of results) {
-      if (result.status === "fulfilled") {
-        loaded.push(result.value);
-      } else {
-        failed.push(result.reason?.message ?? "Unknown file");
+    // Load one at a time so the browser doesn't decode 15 full-res images at once.
+    for (const file of filesToLoad) {
+      try {
+        loaded.push(await loadEditorImage(file));
+      } catch (error) {
+        failed.push(
+          error instanceof Error ? error.message : file.name ?? "Unknown file",
+        );
       }
     }
 
@@ -414,31 +493,25 @@ export default function HomePage() {
       toast.error(`${failed.length} image(s) failed to load.`);
     }
 
-    setImages((current) => {
-      const isFirstBatch = current.length === 0;
-      const next = [...current, ...loaded];
+    const isFirstBatch = imagesRef.current.length === 0;
 
-      if (isFirstBatch) {
-        setActiveImageId(loaded[0].id);
-        setAdjustments(DEFAULT_ADJUSTMENTS);
-        setResize(DEFAULT_RESIZE);
-        setBackground(DEFAULT_BACKGROUND);
-        setPortrait(DEFAULT_PORTRAIT);
-        setEffects(DEFAULT_EFFECTS);
-        setUndoStack([]);
-        setPreview(null);
-        // Start downloading the AI model in the background so it's ready
-        // when the user opens Background or Portrait controls.
-        warmUpModel();
-      }
+    setImages((current) => [...current, ...loaded]);
 
-      return next;
-    });
+    if (isFirstBatch) {
+      setActiveImageId(loaded[0].id);
+      setAdjustments(DEFAULT_ADJUSTMENTS);
+      setResize(DEFAULT_RESIZE);
+      setBackground(DEFAULT_BACKGROUND);
+      setPortrait(DEFAULT_PORTRAIT);
+      setEffects(DEFAULT_EFFECTS);
+      setUndoStack([]);
+    }
 
     toast.success(
       loaded.length === 1 ? "1 image added." : `${loaded.length} images added.`,
     );
-  }, []);
+    closePanel();
+  }, [closePanel]);
 
   const handleRemoveImage = useCallback((id: string) => {
     setImages((current) => {
@@ -453,7 +526,6 @@ export default function HomePage() {
       });
 
       if (next.length === 0) {
-        setPreview(null);
         setAdjustments(DEFAULT_ADJUSTMENTS);
         setResize(DEFAULT_RESIZE);
         setBackground(DEFAULT_BACKGROUND);
@@ -477,7 +549,6 @@ export default function HomePage() {
       return [];
     });
     setActiveImageId(null);
-    setPreview(null);
     setAdjustments(DEFAULT_ADJUSTMENTS);
     setResize(DEFAULT_RESIZE);
     setBackground(DEFAULT_BACKGROUND);
@@ -501,8 +572,9 @@ export default function HomePage() {
           ? `Applied ${preset.name} to all images`
           : "Preset applied to all images",
       );
+      closePanel();
     },
-    [pushUndoSnapshot],
+    [closePanel, pushUndoSnapshot],
   );
 
   const runBackgroundRemoval = useCallback(
@@ -530,14 +602,19 @@ export default function HomePage() {
 
           const cutoutUrl = URL.createObjectURL(blob);
           const cutoutFile = createCutoutFile(image.file, blob);
+          const cutoutThumbnailUrl = await createThumbnailFromBlob(blob);
 
           setImages((prev) =>
             prev.map((item) => {
               if (item.id !== image.id) return item;
               if (item.cutoutUrl) URL.revokeObjectURL(item.cutoutUrl);
+              if (item.cutoutThumbnailUrl) {
+                URL.revokeObjectURL(item.cutoutThumbnailUrl);
+              }
               return {
                 ...item,
                 cutoutUrl,
+                cutoutThumbnailUrl,
                 cutoutFile,
                 bgStatus: "done" as const,
                 bgRemovedByUser: markAsUserRemoval ? true : item.bgRemovedByUser,
@@ -593,22 +670,26 @@ export default function HomePage() {
           ? "Background removed."
           : `Background removed from ${successCount} images.`,
       );
+      closePanel();
     } else if (successCount > 0) {
       toast.warning(
         `Background removed from ${successCount} image(s). ${failureCount} failed.`,
       );
+      closePanel();
     } else {
       toast.error("Background removal failed for all images.");
     }
-  }, [runBackgroundRemoval]);
+  }, [closePanel, runBackgroundRemoval]);
 
   const handleRestoreOriginals = useCallback(() => {
     setImages((prev) =>
       prev.map((item) => {
         if (item.cutoutUrl) URL.revokeObjectURL(item.cutoutUrl);
+        if (item.cutoutThumbnailUrl) URL.revokeObjectURL(item.cutoutThumbnailUrl);
         return {
           ...item,
           cutoutUrl: null,
+          cutoutThumbnailUrl: null,
           cutoutFile: null,
           bgStatus: "none" as const,
           bgRemovedByUser: false,
@@ -616,7 +697,8 @@ export default function HomePage() {
       }),
     );
     toast.success("Restored original images.");
-  }, []);
+    closePanel();
+  }, [closePanel]);
 
   const handleCancelBackground = useCallback(() => {
     bgCancelRef.current = true;
@@ -664,13 +746,15 @@ export default function HomePage() {
     setPortrait((p) => ({ ...p, enabled: true }));
     setPortraitActivating(false);
     toast.success("Portrait Mode is on.");
-  }, [portrait.enabled, portraitActivating, pushUndoSnapshot, runBackgroundRemoval]);
+    closePanel();
+  }, [closePanel, portrait.enabled, portraitActivating, pushUndoSnapshot, runBackgroundRemoval]);
 
   const handlePortraitTurnOff = useCallback(() => {
     pushUndoSnapshot();
     setPortrait((p) => ({ ...p, enabled: false }));
     toast.success("Portrait Mode turned off.");
-  }, [pushUndoSnapshot]);
+    closePanel();
+  }, [closePanel, pushUndoSnapshot]);
 
   /* ── Render ───────────────────────────────────────────────────────────── */
   return (
@@ -874,13 +958,19 @@ export default function HomePage() {
               hasImages && "lg:flex lg:min-h-0 lg:flex-1 lg:flex-col lg:overflow-hidden lg:space-y-2 lg:pb-3",
             )}
           >
-            <BeforeAfter
-              baselineUrl={preview?.baseline ?? null}
-              processedUrl={preview?.processed ?? null}
-              outputWidth={preview?.outputWidth ?? outputDimensions.width}
-              outputHeight={preview?.outputHeight ?? outputDimensions.height}
+            <EditorComparison
+              activeImage={activeImage}
+              adjustments={adjustments}
+              resize={resize}
+              background={background}
+              portrait={portrait}
+              effects={effects}
+              useBackgroundCutout={useBackgroundCutout}
               showCheckerboard={showCheckerboard}
               fill={hasImages && isLgUp}
+              hasImages={hasImages}
+              imageCount={images.length}
+              upscaleFactor={resize.upscaleFactor}
               onUploadClick={!hasImages ? () => togglePanel("upload") : undefined}
               className={cn(
                 !hasImages && "min-h-[40vw] sm:min-h-[32vh]",
@@ -901,36 +991,10 @@ export default function HomePage() {
                 Tap to upload images
               </Button>
             )}
-            {hasImages && resize.upscaleFactor > 1 && activeImage && (
-              <p className="text-muted-foreground shrink-0 text-center text-xs sm:text-sm lg:text-[11px]">
-                Preview is capped for performance. Full {resize.upscaleFactor}x
-                resolution is applied to all {images.length} image
-                {images.length === 1 ? "" : "s"} on download.
-              </p>
-            )}
           </CardContent>
         </Card>
 
       </main>
-
-      {/* ── Hidden canvas for processing ────────────────────────────────── */}
-      {activeImage && (
-        <CanvasPreview
-          key={`${activeImage.id}-${activeImage.cutoutUrl ?? "orig"}`}
-          hidden
-          originalUrl={activeImage.sourceUrl}
-          cutoutUrl={activeImage.cutoutUrl}
-          originalWidth={activeImage.originalWidth}
-          originalHeight={activeImage.originalHeight}
-          adjustments={adjustments}
-          resize={resize}
-          background={background}
-          portrait={portrait}
-          effects={effects}
-          useBackgroundCutout={useBackgroundCutout}
-          onPreviewChange={setPreview}
-        />
-      )}
 
       {/* Mobile backdrop — tap outside sheet to close */}
       {isPanelOpen && !isLgUp && (
@@ -1016,12 +1080,15 @@ export default function HomePage() {
                     outputWidth={outputDimensions.width}
                     outputHeight={outputDimensions.height}
                     onChange={setAdjustmentsDirect}
-                    onCommit={handleAdjustmentsChange}
+                    onCommit={handleAdjustmentsCommit}
+                    onBeginEdit={beginSliderUndo}
                     onEffectsChange={setEffectsDirect}
-                    onEffectsCommit={handleEffectsChange}
-                    onUpscaleChange={(factor: UpscaleFactor) =>
-                      handleResizePartialChange({ upscaleFactor: factor })
-                    }
+                    onEffectsCommit={handleEffectsCommit}
+                    onAutoEnhance={handleAutoEnhance}
+                    onLookSelect={handleLookSelect}
+                    onReset={handleEnhanceReset}
+                    onUpscaleChange={handleUpscaleChange}
+                    onDismiss={closePanel}
                     disabled={!hasImages}
                   />
                 )}
@@ -1031,7 +1098,10 @@ export default function HomePage() {
                       resize={resize}
                       originalWidth={activeImage?.originalWidth ?? 0}
                       originalHeight={activeImage?.originalHeight ?? 0}
-                      onChange={handleResizeChange}
+                      onChange={setResizeDirect}
+                      onCommit={handleResizeCommit}
+                      onBeginEdit={beginSliderUndo}
+                      onDimensionChange={handleResizeChange}
                       disabled={!hasImages}
                     />
                     {images.length > 1 && (
@@ -1054,6 +1124,7 @@ export default function HomePage() {
                     onRemoveBackgrounds={handleRemoveBackgrounds}
                     onRestoreOriginals={handleRestoreOriginals}
                     onCancel={handleCancelBackground}
+                    onDismiss={closePanel}
                     disabled={!hasImages || portrait.enabled}
                   />
                 )}
@@ -1067,10 +1138,12 @@ export default function HomePage() {
                     progress={bgProgress}
                     modelStatus={bgModelStatus}
                     onPortraitChange={setPortraitDirect}
-                    onPortraitCommit={handlePortraitChange}
+                    onPortraitCommit={handlePortraitCommit}
+                    onBeginEdit={beginSliderUndo}
                     onResizeChange={handleResizeChange}
                     onTurnOn={handlePortraitTurnOn}
                     onTurnOff={handlePortraitTurnOff}
+                    onDismiss={closePanel}
                     disabled={!hasImages}
                   />
                 )}

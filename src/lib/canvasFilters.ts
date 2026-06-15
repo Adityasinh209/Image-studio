@@ -86,6 +86,28 @@ export function applyCanvasFilters(
 
 export const PORTRAIT_SUBJECT_SHARPNESS = 22;
 
+let portraitBgCanvas: HTMLCanvasElement | null = null;
+let portraitFgCanvas: HTMLCanvasElement | null = null;
+
+function getPortraitLayerCanvas(
+  which: "bg" | "fg",
+  width: number,
+  height: number,
+  readPixels: boolean,
+): CanvasRenderingContext2D | null {
+  const pool = which === "bg" ? portraitBgCanvas : portraitFgCanvas;
+  const canvas = pool ?? document.createElement("canvas");
+  if (which === "bg") portraitBgCanvas = canvas;
+  else portraitFgCanvas = canvas;
+
+  if (canvas.width !== width) canvas.width = width;
+  if (canvas.height !== height) canvas.height = height;
+
+  return canvas.getContext("2d", {
+    willReadFrequently: readPixels,
+  });
+}
+
 export function compositePortraitBokeh(
   ctx: CanvasRenderingContext2D,
   originalImage: HTMLImageElement,
@@ -97,22 +119,22 @@ export function compositePortraitBokeh(
   blurPx: number,
   subjectSharpness = PORTRAIT_SUBJECT_SHARPNESS,
 ): void {
-  const bgCanvas = document.createElement("canvas");
-  bgCanvas.width = width;
-  bgCanvas.height = height;
-  const bgCtx = bgCanvas.getContext("2d");
+  const bgCtx = getPortraitLayerCanvas("bg", width, height, false);
   if (!bgCtx) return;
 
+  bgCtx.setTransform(1, 0, 0, 1, 0, 0);
+  bgCtx.globalCompositeOperation = "source-over";
+  bgCtx.clearRect(0, 0, width, height);
   bgCtx.filter = buildCanvasFilterString(adjustments, blurPx);
   drawImageToCanvas(bgCtx, originalImage, width, height, mode);
-  ctx.drawImage(bgCanvas, 0, 0);
+  ctx.drawImage(bgCtx.canvas, 0, 0);
 
-  const fgCanvas = document.createElement("canvas");
-  fgCanvas.width = width;
-  fgCanvas.height = height;
-  const fgCtx = fgCanvas.getContext("2d", { willReadFrequently: true });
+  const fgCtx = getPortraitLayerCanvas("fg", width, height, true);
   if (!fgCtx) return;
 
+  fgCtx.setTransform(1, 0, 0, 1, 0, 0);
+  fgCtx.globalCompositeOperation = "source-over";
+  fgCtx.clearRect(0, 0, width, height);
   fgCtx.filter = buildCanvasFilterString(adjustments);
   drawImageToCanvas(fgCtx, originalImage, width, height, mode);
   fgCtx.globalCompositeOperation = "destination-in";
@@ -128,7 +150,7 @@ export function compositePortraitBokeh(
     fgCtx.putImageData(applySharpen(imageData, effectiveSharpness), 0, 0);
   }
 
-  ctx.drawImage(fgCanvas, 0, 0);
+  ctx.drawImage(fgCtx.canvas, 0, 0);
 }
 
 export function applySharpen(

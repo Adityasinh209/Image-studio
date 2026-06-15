@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { GripVertical } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -13,17 +13,20 @@ type BeforeAfterProps = {
   showCheckerboard?: boolean;
   /** When true, scales the comparison to fit its parent height (laptop/desktop). */
   fill?: boolean;
+  /** True while a newer preview is still rendering (deferred value catching up). */
+  isStale?: boolean;
   onUploadClick?: () => void;
   className?: string;
 };
 
-export function BeforeAfter({
+export const BeforeAfter = memo(function BeforeAfter({
   baselineUrl,
   processedUrl,
   outputWidth,
   outputHeight,
   showCheckerboard = false,
   fill = false,
+  isStale = false,
   onUploadClick,
   className,
 }: BeforeAfterProps) {
@@ -31,9 +34,10 @@ export function BeforeAfter({
   const [position, setPosition] = useState(50);
   const [isDragging, setIsDragging] = useState(false);
 
+  /* Reset slider only when the source image or output size changes — not on every effect tweak */
   useEffect(() => {
     setPosition(50);
-  }, [baselineUrl, processedUrl]);
+  }, [baselineUrl, outputWidth, outputHeight]);
 
   const updatePosition = useCallback((clientX: number) => {
     const container = containerRef.current;
@@ -87,7 +91,7 @@ export function BeforeAfter({
         <p className="max-w-xs leading-relaxed">
           Upload and edit an image to compare before &amp; after
         </p>
-        {/* {onUploadClick && (
+        {onUploadClick && (
           <button
             type="button"
             className="text-primary text-sm font-medium underline-offset-4 hover:underline"
@@ -95,7 +99,7 @@ export function BeforeAfter({
           >
             Open upload
           </button>
-        )} */}
+        )}
       </div>
     );
   }
@@ -110,9 +114,10 @@ export function BeforeAfter({
     <div
       ref={containerRef}
       className={cn(
-        "relative overflow-hidden rounded-2xl border shadow-[var(--shadow-soft)] select-none",
+        "relative overflow-hidden rounded-2xl border shadow-[var(--shadow-soft)] select-none transition-opacity duration-150",
         showCheckerboard ? "checkerboard" : "bg-black",
         fill ? "max-h-full max-w-full" : "max-h-full w-full",
+        isStale && "opacity-90",
       )}
       style={
         fill
@@ -134,6 +139,7 @@ export function BeforeAfter({
         alt="Enhanced"
         className="absolute inset-0 size-full object-contain"
         draggable={false}
+        decoding="async"
       />
       <img
         src={baselineUrl}
@@ -141,6 +147,7 @@ export function BeforeAfter({
         className="absolute inset-0 size-full object-contain"
         style={{ clipPath: `inset(0 ${100 - position}% 0 0)` }}
         draggable={false}
+        decoding="async"
       />
       <div
         className="absolute inset-y-0 z-10 w-0.5"
@@ -195,4 +202,4 @@ export function BeforeAfter({
       {comparison}
     </div>
   );
-}
+});

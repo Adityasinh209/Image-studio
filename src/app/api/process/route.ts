@@ -56,7 +56,7 @@ export async function POST(request: Request) {
     const buffer = Buffer.from(arrayBuffer);
 
     let cutoutBuffer: Buffer | null = null;
-    if (cutout instanceof File && ops.portrait.enabled) {
+    if (cutout instanceof File) {
       const cutoutAb = await cutout.arrayBuffer();
       cutoutBuffer = Buffer.from(cutoutAb);
     }

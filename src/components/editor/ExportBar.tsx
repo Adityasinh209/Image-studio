@@ -21,6 +21,7 @@ export type ExportItem = {
   file: File;
   originalFile: File;
   cutoutFile: File | null;
+  bgRemovedByUser: boolean;
 };
 
 type ExportBarProps = {
@@ -69,7 +70,14 @@ async function processImage(
   if (maxSizeKb > 0) {
     formData.append("maxSizeKb", String(maxSizeKb));
   }
-  if (ops.portrait.enabled && item.cutoutFile) {
+  const needsCutout =
+    item.cutoutFile &&
+    (ops.portrait.enabled ||
+      (item.bgRemovedByUser &&
+        (ops.background.type === "transparent" ||
+          ops.background.type === "color")));
+
+  if (needsCutout && item.cutoutFile) {
     formData.append("cutout", item.cutoutFile);
   }
 
@@ -104,6 +112,15 @@ export function ExportBar({
     if (items.length === 0) {
       toast.error("Upload images before downloading.");
       return;
+    }
+
+    if (ops.portrait.enabled) {
+      const missingCutout = items.filter((item) => !item.cutoutFile);
+      if (missingCutout.length > 0) {
+        toast.warning(
+          `Portrait mode: ${missingCutout.length} image(s) lack a cutout and will export without portrait blur.`,
+        );
+      }
     }
 
     setIsExporting(true);
@@ -246,7 +263,7 @@ export function ExportBar({
       className={cn(
         "flex gap-3",
         compact
-          ? "flex-row items-center"
+          ? "flex-row flex-wrap items-center"
           : "flex-col sm:flex-row sm:items-end",
       )}
     >
@@ -281,30 +298,40 @@ export function ExportBar({
           <span className="text-foreground font-semibold">{formatLabel}</span>
         </p>
       </div>
-      {!compact && (
-        <div className="w-full space-y-2 sm:w-auto">
-          <Label>Max file size</Label>
-          <Select
-            value={maxSize}
-            onValueChange={setMaxSize}
-            disabled={disabled || isExporting}
+      <div
+        className={cn(
+          "space-y-1.5",
+          compact ? "min-w-[7.5rem] flex-1" : "w-full space-y-2 sm:w-auto",
+        )}
+      >
+        {!compact && <Label>Max file size</Label>}
+        <Select
+          value={maxSize}
+          onValueChange={setMaxSize}
+          disabled={disabled || isExporting}
+        >
+          <SelectTrigger
+            className={cn(
+              "h-11 rounded-xl",
+              compact ? "w-full" : "w-full sm:w-44",
+            )}
           >
-            <SelectTrigger className="h-11 w-full rounded-xl sm:w-44">
-              <SelectValue placeholder="No limit" />
-            </SelectTrigger>
-            <SelectContent>
-              {SIZE_OPTIONS.map((option) => (
-                <SelectItem key={option.value} value={option.value}>
-                  {option.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            <SelectValue placeholder="No limit" />
+          </SelectTrigger>
+          <SelectContent>
+            {SIZE_OPTIONS.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {!compact && (
           <p className="text-muted-foreground text-xs">
             JPG/WEBP compress toward the target. PNG may not reach small sizes.
           </p>
-        </div>
-      )}
+        )}
+      </div>
       <Button
         type="button"
         className={cn(

@@ -10,6 +10,8 @@ export const SUPPORTED_MIME_TYPES = [
 export const SUPPORTED_EXTENSIONS = [".jpg", ".jpeg", ".png", ".webp"];
 
 export const MAX_PREVIEW_EDGE = 1600;
+/** Lower cap for live slider preview — export still uses full resolution. */
+export const MAX_LIVE_PREVIEW_EDGE = 800;
 export const MAX_OUTPUT_EDGE = 8000;
 export const UPSCALE_FACTORS = [1, 2, 4] as const;
 export type UpscaleFactor = (typeof UPSCALE_FACTORS)[number];

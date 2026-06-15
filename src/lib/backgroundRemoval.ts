@@ -91,8 +91,11 @@ async function getPipeline(onProgress?: ProgressHandler) {
  * Safe to call multiple times — only triggers one download.
  */
 export function warmUpModel() {
-  if (modelStatus !== "idle") return;
-  // Fire-and-forget; errors are swallowed since the user hasn't asked for anything yet
+  if (modelStatus === "loading" || modelStatus === "ready") return;
+  if (modelStatus === "error") {
+    pipelinePromise = null;
+    notifyStatus("idle");
+  }
   getPipeline(() => {}).catch(() => {});
 }
 
@@ -101,7 +104,7 @@ export async function removeBackground(
   onProgress?: ProgressHandler,
 ): Promise<Blob> {
   const segmenter = await getPipeline(onProgress);
-  onProgress?.("Removing background…");
+  onProgress?.("Processing image…");
   const result = await segmenter(file);
   const image = Array.isArray(result) ? result[0] : result;
   return image.toBlob("image/png");

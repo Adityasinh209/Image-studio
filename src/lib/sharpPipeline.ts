@@ -96,6 +96,21 @@ export async function processImageWithSharp(
       sharpenAmount,
       format === "jpg" ? "#ffffff" : null,
     );
+  } else if (
+    cutoutBuffer &&
+    (ops.background.type === "color" || ops.background.type === "transparent")
+  ) {
+    raw = await buildCutoutCompositeRaw(
+      cutoutBuffer,
+      ops,
+      width,
+      height,
+      fit,
+      brightness,
+      contrast,
+      sharpenAmount,
+      flattenColor,
+    );
   } else {
     raw = await buildStandardRaw(
       buffer,
@@ -156,6 +171,61 @@ async function buildStandardRaw(
   }
 
   return toRaw(pipeline);
+}
+
+async function buildCutoutCompositeRaw(
+  cutoutBuffer: Buffer,
+  ops: ImageOps,
+  width: number,
+  height: number,
+  fit: "cover" | "inside" | "fill",
+  brightness: number,
+  contrast: number,
+  sharpenAmount: number,
+  flattenColor: string | null,
+): Promise<RawImage> {
+  let cutoutPipeline = sharp(cutoutBuffer);
+
+  if (ops.adjustments.noiseReduction > 0) {
+    const size = ops.adjustments.noiseReduction > 60 ? 5 : 3;
+    cutoutPipeline = cutoutPipeline.median(size);
+  }
+
+  cutoutPipeline = cutoutPipeline
+    .resize(width, height, {
+      fit,
+      position: "centre",
+      kernel: sharp.kernel.lanczos3,
+      withoutEnlargement: false,
+    })
+    .ensureAlpha()
+    .modulate({ brightness });
+
+  if (ops.adjustments.contrast !== 0) {
+    cutoutPipeline = cutoutPipeline.linear(contrast, -(128 * contrast) + 128);
+  }
+
+  if (sharpenAmount > 0) {
+    const sigma = 0.5 + (sharpenAmount / 100) * 2;
+    cutoutPipeline = cutoutPipeline.sharpen({ sigma });
+  }
+
+  const cutoutBuf = await cutoutPipeline.png().toBuffer();
+
+  if (flattenColor) {
+    const composed = sharp({
+      create: {
+        width,
+        height,
+        channels: 3,
+        background: flattenColor,
+      },
+    }).composite([{ input: cutoutBuf, blend: "over" }]);
+
+    return toRaw(composed);
+  }
+
+  return toRaw(sharp(cutoutBuf));
 }
 
 async function buildPortraitRaw(

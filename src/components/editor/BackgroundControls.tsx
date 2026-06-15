@@ -31,6 +31,7 @@ type BackgroundControlsProps = {
   onRemoveBackgrounds: () => void;
   onRestoreOriginals: () => void;
   onCancel: () => void;
+  onDismiss?: () => void;
   disabled?: boolean;
 };
 
@@ -49,6 +50,13 @@ function ModelStatusBadge({ status }: { status: ModelStatus }) {
       <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-600 dark:text-amber-400">
         <Loader2 className="size-2.5 animate-spin" />
         Loading AI…
+      </span>
+    );
+  }
+  if (status === "error") {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-red-500/10 px-2 py-0.5 text-[10px] font-medium text-red-600 dark:text-red-400">
+        AI failed — tap Remove to retry
       </span>
     );
   }
@@ -72,10 +80,17 @@ export function BackgroundControls({
   onRemoveBackgrounds,
   onRestoreOriginals,
   onCancel,
+  onDismiss,
   disabled,
 }: BackgroundControlsProps) {
   const setType = (type: BackgroundSettings["type"]) => {
     onBackgroundChange({ ...background, type });
+    onDismiss?.();
+  };
+
+  const setColor = (color: string) => {
+    onBackgroundChange({ ...background, color });
+    onDismiss?.();
   };
 
   const percent = isProcessing ? parsePercent(progress) : null;
@@ -228,9 +243,7 @@ export function BackgroundControls({
                       : "border-border/60",
                   )}
                   style={{ backgroundColor: color }}
-                  onClick={() =>
-                    onBackgroundChange({ ...background, color })
-                  }
+                  onClick={() => setColor(color)}
                   disabled={disabled}
                 />
               ))}
@@ -239,12 +252,7 @@ export function BackgroundControls({
               <Input
                 type="color"
                 value={background.color}
-                onChange={(event) =>
-                  onBackgroundChange({
-                    ...background,
-                    color: event.target.value,
-                  })
-                }
+                onChange={(event) => setColor(event.target.value)}
                 className="h-11 w-16 shrink-0 cursor-pointer rounded-xl p-1"
                 disabled={disabled}
               />

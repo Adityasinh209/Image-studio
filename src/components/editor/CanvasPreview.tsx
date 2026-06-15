@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef } from "react";
 
 import {
   applyCanvasFilters,
@@ -17,6 +17,7 @@ import {
   blurStrengthToPixels,
   computeOutputDimensions,
   getPreviewRenderSize,
+  MAX_LIVE_PREVIEW_EDGE,
   type BackgroundSettings,
   type EffectsSettings,
   type ImageAdjustments,
@@ -24,6 +25,11 @@ import {
   type PreviewUrls,
   type ResizeSettings,
 } from "@/lib/imageOps";
+import {
+  createPreviewScheduler,
+  encodePreviewCanvas,
+  revokePreviewUrl,
+} from "@/lib/previewScheduler";
 
 type CanvasPreviewProps = {
   originalUrl: string | null;
@@ -50,6 +56,36 @@ function loadImage(src: string): Promise<HTMLImageElement> {
   });
 }
 
+function baselineCacheKey(
+  originalUrl: string,
+  originalWidth: number,
+  originalHeight: number,
+  resize: ResizeSettings,
+): string {
+  return [
+    originalUrl,
+    originalWidth,
+    originalHeight,
+    resize.width,
+    resize.height,
+    resize.mode,
+    resize.scalePercent,
+    resize.maintainAspectRatio,
+  ].join("|");
+}
+
+function getRenderDelay(
+  portrait: PortraitSettings,
+  adjustments: ImageAdjustments,
+  effects: EffectsSettings,
+): number {
+  if (portrait.enabled) return 90;
+  if (adjustments.sharpness > 0 || adjustments.noiseReduction > 0) return 90;
+  if (effects.look !== "none" || effects.retouch > 0) return 55;
+  if (effects.vignette > 0) return 35;
+  return 20;
+}
+
 export function CanvasPreview({
   originalUrl,
   cutoutUrl,
@@ -67,11 +103,42 @@ export function CanvasPreview({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const originalImageRef = useRef<HTMLImageElement | null>(null);
   const cutoutImageRef = useRef<HTMLImageElement | null>(null);
-  const renderPreviewRef = useRef<() => void>(() => undefined);
-  const [isRendering, setIsRendering] = useState(false);
-  const [loadError, setLoadError] = useState(false);
+  const schedulerRef = useRef(createPreviewScheduler());
+  const renderGenerationRef = useRef(0);
+  const onPreviewChangeRef = useRef(onPreviewChange);
+  const previewUrlsRef = useRef<{ baseline: string; processed: string } | null>(
+    null,
+  );
+  const baselineCacheRef = useRef<{
+    key: string;
+    url: string;
+    outputWidth: number;
+    outputHeight: number;
+  } | null>(null);
 
-  const renderPreview = useCallback(() => {
+  onPreviewChangeRef.current = onPreviewChange;
+
+  const publishPreview = useCallback((preview: PreviewUrls | null) => {
+    const prev = previewUrlsRef.current;
+    if (preview) {
+      if (prev?.processed && prev.processed !== preview.processed) {
+        revokePreviewUrl(prev.processed);
+      }
+      previewUrlsRef.current = {
+        baseline: preview.baseline,
+        processed: preview.processed,
+      };
+    } else {
+      if (prev) {
+        revokePreviewUrl(prev.processed);
+      }
+      previewUrlsRef.current = null;
+    }
+
+    onPreviewChangeRef.current?.(preview);
+  }, []);
+
+  const renderPreview = useCallback(async () => {
     const canvas = canvasRef.current;
     const originalImage = originalImageRef.current;
     if (!canvas || !originalImage || !originalImage.complete) return;
@@ -86,10 +153,14 @@ export function CanvasPreview({
     const output = computeOutputDimensions(baseWidth, baseHeight, resize);
     if (output.width <= 0 || output.height <= 0) return;
 
-    const previewSize = getPreviewRenderSize(output.width, output.height);
+    const previewSize = getPreviewRenderSize(
+      output.width,
+      output.height,
+      MAX_LIVE_PREVIEW_EDGE,
+    );
     if (previewSize.width <= 0 || previewSize.height <= 0) return;
 
-    setIsRendering(true);
+    const generation = ++renderGenerationRef.current;
 
     try {
       canvas.width = previewSize.width;
@@ -102,8 +173,21 @@ export function CanvasPreview({
       const portraitActive = portrait.enabled && Boolean(cutoutImage?.complete);
       const minEdge = Math.min(previewSize.width, previewSize.height);
       const blurPx = blurStrengthToPixels(portrait.blurStrength, minEdge);
+      const needsAlpha =
+        (useBackgroundCutout && background.type === "transparent") ||
+        (background.type === "transparent" && portraitActive);
 
-      const drawBaseline = () => {
+      const cacheKey = baselineCacheKey(
+        originalUrl ?? "",
+        baseWidth,
+        baseHeight,
+        resize,
+      );
+
+      let baseline = baselineCacheRef.current;
+      if (!baseline || baseline.key !== cacheKey) {
+        if (baseline) revokePreviewUrl(baseline.url);
+
         ctx.filter = "none";
         ctx.clearRect(0, 0, previewSize.width, previewSize.height);
         drawImageToCanvas(
@@ -113,10 +197,21 @@ export function CanvasPreview({
           previewSize.height,
           resize.mode,
         );
-      };
 
-      drawBaseline();
-      const baseline = canvas.toDataURL("image/png");
+        const baselineUrl = await encodePreviewCanvas(canvas, false);
+        if (generation !== renderGenerationRef.current) {
+          revokePreviewUrl(baselineUrl);
+          return;
+        }
+
+        baseline = {
+          key: cacheKey,
+          url: baselineUrl,
+          outputWidth: output.width,
+          outputHeight: output.height,
+        };
+        baselineCacheRef.current = baseline;
+      }
 
       if (portraitActive && cutoutImage) {
         ctx.filter = "none";
@@ -190,36 +285,56 @@ export function CanvasPreview({
 
       ctx.filter = "none";
 
-      onPreviewChange?.({
-        processed: canvas.toDataURL("image/png"),
-        baseline,
-        outputWidth: output.width,
-        outputHeight: output.height,
+      const processedUrl = await encodePreviewCanvas(canvas, needsAlpha);
+      if (generation !== renderGenerationRef.current) {
+        revokePreviewUrl(processedUrl);
+        return;
+      }
+
+      publishPreview({
+        processed: processedUrl,
+        baseline: baseline.url,
+        outputWidth: baseline.outputWidth,
+        outputHeight: baseline.outputHeight,
       });
-    } finally {
-      setIsRendering(false);
+    } catch (error) {
+      if (generation === renderGenerationRef.current) {
+        console.error("Preview render failed:", error);
+      }
     }
   }, [
     adjustments,
     background,
-    cutoutUrl,
     effects,
-    onPreviewChange,
     originalHeight,
+    originalUrl,
     originalWidth,
     portrait,
+    publishPreview,
     resize,
     useBackgroundCutout,
   ]);
 
-  renderPreviewRef.current = renderPreview;
+  const scheduleRender = useCallback(() => {
+    const delay = getRenderDelay(portrait, adjustments, effects);
+    schedulerRef.current.schedule(() => {
+      void renderPreview();
+    }, delay);
+  }, [adjustments, effects, portrait, renderPreview]);
 
   useEffect(() => {
     if (!originalUrl) {
+      schedulerRef.current.invalidate();
+      renderGenerationRef.current++;
       originalImageRef.current = null;
       cutoutImageRef.current = null;
-      setLoadError(false);
-      onPreviewChange?.(null);
+
+      if (baselineCacheRef.current) {
+        revokePreviewUrl(baselineCacheRef.current.url);
+        baselineCacheRef.current = null;
+      }
+
+      publishPreview(null);
       return;
     }
 
@@ -233,46 +348,55 @@ export function CanvasPreview({
         if (cancelled) return;
         originalImageRef.current = origImg;
         cutoutImageRef.current = cutoutImg ?? null;
-        setLoadError(false);
-        renderPreviewRef.current();
+        scheduleRender();
       })
       .catch(() => {
         if (cancelled) return;
         originalImageRef.current = null;
         cutoutImageRef.current = null;
-        setLoadError(true);
-        onPreviewChange?.(null);
+        publishPreview(null);
       });
 
     return () => {
       cancelled = true;
     };
-  }, [originalUrl, cutoutUrl, onPreviewChange]);
+  }, [cutoutUrl, originalUrl, publishPreview, scheduleRender]);
 
   useEffect(() => {
     if (!originalUrl || !originalImageRef.current?.complete) return;
-
-    // Use a longer debounce when expensive pixel ops are active so rapid
-    // slider drags don't queue up many heavy renders.
-    let delay = 0;
-    if (portrait.enabled) delay = 80; // compositing two canvases
-    else if (adjustments.sharpness > 0 || adjustments.noiseReduction > 0) delay = 80;
-    else if (effects.look !== "none" || effects.retouch > 0 || effects.vignette > 0) delay = 40;
-
-    const timeout = window.setTimeout(renderPreviewRef.current, delay);
-    return () => window.clearTimeout(timeout);
+    scheduleRender();
+    return () => schedulerRef.current.cancel();
   }, [
     adjustments,
     background,
-    portrait,
-    effects,
-    resize,
-    originalUrl,
     cutoutUrl,
-    originalWidth,
+    effects,
     originalHeight,
+    originalUrl,
+    originalWidth,
+    portrait,
+    resize,
+    scheduleRender,
     useBackgroundCutout,
   ]);
+
+  useEffect(() => {
+    return () => {
+      schedulerRef.current.invalidate();
+      renderGenerationRef.current++;
+
+      if (baselineCacheRef.current) {
+        revokePreviewUrl(baselineCacheRef.current.url);
+        baselineCacheRef.current = null;
+      }
+
+      const urls = previewUrlsRef.current;
+      if (urls) {
+        revokePreviewUrl(urls.processed);
+        previewUrlsRef.current = null;
+      }
+    };
+  }, []);
 
   if (hidden) {
     return (
@@ -292,25 +416,12 @@ export function CanvasPreview({
     );
   }
 
-  if (loadError) {
-    return (
-      <div className="bg-destructive/10 text-destructive flex min-h-48 items-center justify-center rounded-xl border px-4 text-center text-sm sm:min-h-64">
-        Failed to load image preview
-      </div>
-    );
-  }
-
   return (
     <div className="relative overflow-hidden rounded-xl border bg-black/5">
       <canvas
         ref={canvasRef}
         className="mx-auto block max-h-[45vh] w-full object-contain sm:max-h-[55vh] lg:max-h-[70vh]"
       />
-      {isRendering && (
-        <div className="bg-background/70 absolute inset-0 flex items-center justify-center text-sm">
-          Updating preview...
-        </div>
-      )}
     </div>
   );
 }
